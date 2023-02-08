@@ -17,18 +17,33 @@ from pulser.devices.interaction_coefficients import c6_dict
 from pulser.devices._device_datacls import BaseDevice
 from pulser.channels import Rydberg
 
+
+def concatenate_times(times: list):
+    concatenated_times = []
+    n = len(times)
+    constant = times[0]
+    for i in range(1, n):
+        if times[i][2] == constant[2]:
+            constant[1] = times[i][1]
+        else:
+            concatenated_times.append(constant)
+            constant = times[i]
+    concatenated_times.append(constant)
+    return concatenated_times
+
+
 class Times:
     
-    t0: int = 0
+    t0: int
     tmax: int
-    expression: int | float | ArithExpression = None
-    times: list = []
+    expression: int | float | ArithExpression
+    times: list
 
-    def _init_(self, t0, tmax, expression=None, times=[]):
+    def __init__(self, t0, tmax, expression=None, times=[]):
         self.t0 = t0
         self.tmax = tmax
         self.expression = expression
-        if len(self.times)==0:
+        if len(times)==0:
             if expression is None:
                 self.times = []
             else:
@@ -39,6 +54,18 @@ class Times:
             if times[-1][1] != self.tmax:
                 raise ValueError("tmax and last time in list should be equal")
             self.times = list(times)
+
+
+    def __repr__(self):
+        return str(self.times)
+
+
+    def __str__(self):
+        return str(self.times)
+
+
+    def to_tuple(self):
+        return tuple([tuple(time) for time in self.times])
 
 
     @property
@@ -93,22 +120,8 @@ class Times:
         return [[ti, tf, expression]]
 
 
-    def concatenate_times(self, times:list):
-        concatenated_times = []
-        n = len(times)
-        constant = times[0]
-        for i in range(1, n):
-            if times[i][2] == constant[2]:
-                constant[1] = times[i][1]
-            else:
-                concatenated_times.append(constant)
-                constant = times[i]
-        concatenated_times.append(constant)
-        return concatenated_times
-
-    
     def extract_times(self, ti:int, tf:int, expression:ArithExpression):
-        return self.concatenate_times(self.extract_times_rec(ti, tf, expression))
+        return concatenate_times(self.extract_times_rec(ti, tf, expression))
 
 
     def multiply_by_expression(self, new_expression):
@@ -118,15 +131,14 @@ class Times:
         return product
 
 
-    def to_tuple(self):
-        return tuple([tuple(time) for time in self.times])
-
 
 def sum_times(times_list:list[Times]) -> Times:
     ntimes = len(times_list)
-    if not np.all([times_list[i].t0 for i in range(ntimes)]):
+    if ntimes == 0:
+        raise ValueError("At least one Times element should be provided in a list")
+    if len(set([times_list[i].t0 for i in range(ntimes)])) != 1:
         raise ValueError("All time lists should start at the same time")
-    if not np.all([times_list[i].tmax for i in range(ntimes)]):
+    if len(set([times_list[i].tmax for i in range(ntimes)])) != 1:
         raise ValueError("All time lists should end at the same time")
     t0 = times_list[0].t0
     tmax = times_list[0].tmax
@@ -146,9 +158,9 @@ def sum_times(times_list:list[Times]) -> Times:
 
 def synch_times(times_list:list[Times]) -> list[Times]:
     ntimes = len(times_list)
-    if not np.all([times_list[i].t0 for i in range(ntimes)]):
+    if len(set([times_list[i].t0 for i in range(ntimes)])) != 1:
         raise ValueError("All time lists should start at the same time")
-    if not np.all([times_list[i].tmax for i in range(ntimes)]):
+    if len(set([times_list[i].tmax for i in range(ntimes)])) != 1:
         raise ValueError("All time lists should end at the same time")
     t0 = times_list[0].t0
     tmax = times_list[0].tmax
@@ -159,7 +171,7 @@ def synch_times(times_list:list[Times]) -> list[Times]:
         final_times = [times_list[i].times[index_in_times[i]][1] for i in range(ntimes)] 
         final_time = min(final_times)
         for i in range(ntimes):
-            synched_times[i].append([time, final_time, times_list[i][index_in_times[i]][2]])
+            synched_times[i].append([time, final_time, times_list[i].times[index_in_times[i]][2]])
             if final_times[i] == final_time:
                 index_in_times[i] += 1
         time = final_time + 1
@@ -167,7 +179,6 @@ def synch_times(times_list:list[Times]) -> list[Times]:
     return [Times(t0, tmax, times=synched_times[i]) for i in range(ntimes)]
 
 
-@dataclass
 class PasqalAQPU(QPUHandler):
     """Base class of a Pasqal Analog Quantum Processing Unit
     A PasqalAQPU is defined by a Device and a Register.
@@ -182,8 +193,7 @@ class PasqalAQPU(QPUHandler):
     nbqubits: int
     schedule: Sequence | None = None
 
-
-    def __init__(self, *, device: BaseDevice = MockDevice, register: Register) -> None:
+    def __init__(self, device: BaseDevice, register: Register) -> None:
         super().__init__()
         self.device = device
         self.register = register
@@ -203,7 +213,7 @@ class PasqalAQPU(QPUHandler):
 
     @property
     def interactions(self):
-        """Returns an adjacency matrix with the interactions between the qubits (in :math:`\hbar rad/\mu s`)"""
+        """Returns an adjacency matrix with the interactions between the qubits (in :math:`rad/\mu s`)"""
         interactions = np.zeros((self.nbqubits, self.nbqubits))
         for i in range(self.nbqubits):
             for j in range(self.nbqubits):
@@ -218,8 +228,14 @@ class PasqalAQPU(QPUHandler):
         """Extract all the parameters of the job"""
         # Only the time variable should appear in the next computations
         self.parameter_map = job.parameter_map  # a dict of parameters given in entry: value
-        self.circuit = job.circuit(**self.parameter_map)  # evaluate the circuit with the parameters
-        self.schedule = job.schedule(**self.parameter_map)  # evaluate the sequence with the parameters
+        if not job.circuit:
+            self.circuit = job.circuit  
+        else:
+            self.circuit = job.circuit(**self.parameter_map)  # evaluate the circuit with the parameters
+        if not job.schedule:
+            self.schedule = job.schedule
+        else:
+            self.schedule = job.schedule(**self.parameter_map)  # evaluate the sequence with the parameters
         # Other parameters
         self.jobtype = job.type
         self.jobObservable = job.observable
@@ -244,12 +260,10 @@ class PasqalAQPU(QPUHandler):
         # Check that no other variables are present than the time variable
         self.scheduleTimeVariable = self.schedule.tname
         self.scheduleVariables = self.schedule.get_variables()
-        if self.scheduleTimeVariable[0] in self.scheduleVariable:
-            if len(self.scheduleVariables) > 1:
-                raise ValueError("Variables"+self.scheduleVariables.remove(self.scheduleTimeVariable[0])+"not defined")
-        else:
-            if len(self.scheduleVariables) > 0:
-                raise ValueError("Variables"+self.scheduleVariables+"not defined")
+        if self.scheduleTimeVariable[0] in self.scheduleVariables:
+            self.scheduleVariables.remove(self.scheduleTimeVariable[0])
+        if len(self.scheduleVariables) > 0:
+                raise ValueError("Variables"+str(self.scheduleVariables)+"not defined")
 
         if self.schedule._tmax.int_p is None:
             raise ValueError("tmax should be integer (in ns)")
@@ -269,7 +283,7 @@ class PasqalAQPU(QPUHandler):
             parameters["identity"] = Times(0, self.tmax, times=pulses.multiply_by_expression(obs._constant_coeff.get_value()))
             # extract the coefficient in front of each operator as a step function
             for term in obs._terms:
-                parameters[(term.op, tuple(term.qbits))] = Times(0, self.tmax, times=pulses.multiply_by_expression(pulses, term._coeff.get_value()))
+                parameters[(term.op, tuple(term.qbits))] = Times(0, self.tmax, times=pulses.multiply_by_expression(term._coeff.get_value()))
             sequences.append(parameters)           
         return sequences
 
@@ -283,19 +297,15 @@ class PasqalAQPU(QPUHandler):
         for key in keys:
             sequence[key] = Times(0,
                 self.tmax,
-                times=Times.concatenate_times(
-                    self.sum_times(
-                        [sequences[i][key] for i in range(self.nsequences) if key in self.sequences[i].keys()]
-                    )
-                )
+                times=concatenate_times(sum_times([sequences[i][key] for i in range(self.nsequences) if key in sequences[i].keys()]).times)
             )
         return sequence
 
 
     def get_synchronized_sequence(self, sequence):
-        keys = sequence.keys()
+        keys = list(sequence.keys())
         synchronized_sequence = {}
-        synchronized_list = self.synch_times([sequence[key] for key in keys])
+        synchronized_list = synch_times([sequence[key] for key in keys])
         for i in range(len(keys)):
             synchronized_sequence[keys[i]] = synchronized_list[i]
         return synchronized_sequence
@@ -333,16 +343,17 @@ class PasqalAQPU(QPUHandler):
         return statevalue
 
 
-    def convertPulserResult(self, pulserResult, N_samples):
+    def convertPulserResult(self, pulserResult, N_samples, asdict):
         myqlmResult = Result(nbqbits=self.nbqubits)
-        if self.job_type == "SAMPLE":
+        if self.jobtype == 0:
             result_dict = pulserResult.sample_final_state(N_samples=N_samples)
+            if asdict:
+                return result_dict
             for k, v in result_dict.items():
                 state = self.convertToCompBasis(k)
-                for _ in range(v):
-                    myqlmResult.add_sample(state)
+                myqlmResult.add_sample(state, probability=float(v)/N_samples)
             return myqlmResult
-        elif self.job_type == "OBS":
+        elif self.jobtype == 1:
             raise ValueError("""OBS measurement not implemented on PasqalAQPU""")
         else:
             raise ValueError("""Job type can only be "OBS" or "SAMPLE".""")
@@ -355,10 +366,10 @@ class PasqalAQPU(QPUHandler):
         myqlmSynchronizedSequence = self.get_synchronized_sequence(myqlmSequence)
         return myqlmSynchronizedSequence
     
-    def _submit_sequence(self, sequence, sampling_rate, config, evaluation_times, with_modulation, N_samples):
+    def _submit_sequence(self, sequence, sampling_rate, config, evaluation_times, with_modulation, N_samples, asdict):
         self.sim = Simulation(sequence, sampling_rate, config, evaluation_times, with_modulation)
         pulserResult = self.sim.run(progress_bar = True)
-        outputResult = self.convertPulserResult(pulserResult, N_samples)
+        outputResult = self.convertPulserResult(pulserResult, N_samples, asdict)
         return outputResult
 
 
@@ -370,18 +381,19 @@ class FresnelAQPU(PasqalAQPU):
         - Can only implement Ising Hamiltonians
         - 
     """
-    ising_channel: str|None = None
     
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, device, register) -> None:
+        super().__init__(device=device, register=register)
+        self.nbqubits = len(self.register._ids)
         self.check_channels(self.device)
+
 
     def check_channels(self, device:BaseDevice) -> None:
         has_rydberg_global = False
-        for channel in self.device:
-            if isinstance(channel, Rydberg) and channel.addressing == "Global":
+        for channel_name, channel_type in device.channels.items():
+            if isinstance(channel_type, Rydberg) and channel_type.addressing == "Global":
                 has_rydberg_global = True
-                self.ising_channel = channel.name
+                self.ising_channel = channel_name
         if not has_rydberg_global:
             raise ValueError("Fresnel AQPU: your device should at least have a Rydberg channel with Global addressing")
 
@@ -415,34 +427,34 @@ class FresnelAQPU(PasqalAQPU):
                 ZZcoeff.pop(ZZcoeff.index(0))
             if len(ZZcoeff) > 1:
                 raise ValueError("ZZ coefficients should be constant or 0 along time")
-            if ZZcoeff[0].isinstance(ArithExpression):
+            if isinstance(ZZcoeff[0], ArithExpression):
                 raise ValueError("ZZ coefficients should be time-independent")
             if 4*ZZcoeff[0] != self.interactions[max(qubitid[0], qubitid[1])][min(qubitid[0], qubitid[1])]:
                 raise ValueError("ZZ coefficients should match with defined Register: use qpu.interactions to define them")
 
 
     def extract_omegas_phases(self, isingSequence:dict[str:dict]):
-        X_times = list(set(isingSequence["X"].values().to_tuple())) # Warning: set of my own class ?
-        Y_times = list(set(isingSequence["Y"].values().to_tuple()))
-        nxcoeff = len(X_coeff)
-        nycoeff = len(Y_coeff)
+        X_times = list(set([isingSequenceX.to_tuple() for isingSequenceX in isingSequence["X"].values()])) # Warning: set of my own class ?
+        Y_times = list(set([isingSequenceY.to_tuple() for isingSequenceY in isingSequence["Y"].values()]))
+        nxcoeff = len(X_times)
+        nycoeff = len(Y_times)
         if nxcoeff > 1 or nycoeff > 1:
             raise ValueError("Omega should be the same on each qubit")
         if nxcoeff == 0:
-            X_coeff = Times(0, self.tmax, X_times)
+            X_times = Times(0, self.tmax, X_times)
         if nycoeff == 0:
-            Y_coeff = Times(0, self.tmax, Y_times)
+            Y_times = Times(0, self.tmax, Y_times)
         omega_list = []
         phase_list = []
         for i in range(len(X_times[0])):
-            time = X_coeff[0][i] + 1j * Y_coeff[0][i]
-            phase = -1 * angle(time[2])
+            r = X_times[0][i][2] + 1j * Y_times[0][i][2]
+            phase = -1 * angle(r)
             if isinstance(phase, ArithExpression):
-                phase_array = [phase(t) for t in range(time[0], time[1]+1)]
+                phase_array = [phase(t=ti) for ti in range(X_times[0][i][0], X_times[0][i][1]+1)]
                 phase = np.mean(phase_array)
-            omega = sqrt(real(time[2])**2 + imag(time[2])**2)
-            omega_list.append([time[0], time[1], omega])
-            phase_list.append([time[0], time[1], phase])
+            omega = sqrt(X_times[0][i][2]**2 + Y_times[0][i][2]**2)
+            omega_list.append([X_times[0][i][0], X_times[0][i][1], omega])
+            phase_list.append([X_times[0][i][0], X_times[0][i][1], phase])
 
         return Times(0, self.tmax, times=omega_list), Times(0, self.tmax, times=phase_list)
 
@@ -454,37 +466,37 @@ class FresnelAQPU(PasqalAQPU):
         deltas_list = []
         for identity_time in identity_sequence.times:
             deltas_list.append([identity_time[0], identity_time[1], -4*(identity_time[2] - constant_from_U)])
-        return Times(0, self.tmax, list=deltas_list)
+        return Times(0, self.tmax, times=deltas_list)
 
 
     def build_ising_sequence(self, omegas, deltas, phases):
         for i in range(omegas.length_times):
 
-            duration = omegas[i][1] - omegas[i][0] + 1
+            duration = omegas.times[i][1] - omegas.times[i][0] + 1
 
-            omega = self.evaluateExpression(omegas[i])
+            omega = self.evaluateExpression(omegas.times[i])
             isTimeDependentOmega = isinstance(omega, Waveform)
     
-            delta = self.evaluateExpression(deltas[i])
+            delta = self.evaluateExpression(deltas.times[i])
             isTimeDependentDelta = isinstance(delta, Waveform)
             
-            phase = self.evaluateExpression(phases[i])
-            isTimeDependentPhase = isinstance(phase, Waveform)
+            phase = phases.times[i][2]
+            assert not isinstance(phase, ArithExpression)
 
-            if not(isTimeDependentOmega or isTimeDependentDelta or isTimeDependentPhase):
+            if not isTimeDependentOmega and not isTimeDependentDelta:
                 # If all parameters are constant
                 # Add a constant pulse
-                self.sequence.add(Pulse.ConstantPulse(duration, omega, delta, phase), channel="ch")
+                self.sequence.add(Pulse.ConstantPulse(duration, omega, delta, phase), channel="ising_ch")
             elif not isTimeDependentOmega:
                 # In this case we could like to send an eom pulse
-                self.sequence.add(Pulse.ConstantAmplitude(duration, omega, delta, phase), channel="ch")
+                self.sequence.add(Pulse.ConstantAmplitude(duration, omega, delta, phase), channel="ising_ch")
             elif not isTimeDependentDelta:
-                self.sequence.add(Pulse.ConstantDetuning(duration, omega, delta, phase, channel="ch"))  # Does not work
+                self.sequence.add(Pulse.ConstantDetuning(duration, omega, delta, phase), channel="ising_ch")  # Does not work
             else:
-                self.sequence.add(Pulse(duration, omega, delta, phase, channel="ising_ch"))
+                self.sequence.add(Pulse(omega, delta, phase), channel="ising_ch")
 
 
-    def submit_job(self, job, sampling_rate=1.0, config=None, evaluation_times='Full', with_modulation=False, N_samples=1000):
+    def submit_job(self, job, toprint = True, todraw=True, sampling_rate=1.0, config=None, evaluation_times='Full', with_modulation=False, N_samples=1000, asdict=False):
         if list(set(job.psi_0))[0] != "0":
             raise ValueError("Fresnel: qubit should be initialized in |0> state")
         
@@ -501,6 +513,10 @@ class FresnelAQPU(PasqalAQPU):
         self.sequence.declare_channel("ising_ch", self.ising_channel)
 
         self.build_ising_sequence(omegas, deltas, phases)
+        if toprint:
+            print(self.sequence)
+        if todraw:
+            self.sequence.draw()
         # Configure slm for self.psi_0 initialization
         # Configure measurements from self.measObservable
-        return  self._submit_sequence(self.sequence, sampling_rate, config, evaluation_times, with_modulation)
+        return  self._submit_sequence(self.sequence, sampling_rate, config, evaluation_times, with_modulation, N_samples, asdict)
