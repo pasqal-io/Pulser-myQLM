@@ -1,6 +1,6 @@
 # Pulser-MyQLM
 
-Integration of Pulser and Pasqal devices within the Atos MyQLM framework
+Pulser-MyQLM is an extension of Pulser and myqlm qat.core for the integration of the Pulser framework and Pasqal devices within the Atos MyQLM framework.
 
 ## Installation
 
@@ -16,85 +16,64 @@ If you also wish to install the development requirements (optional), follow up w
 pip install -r dev_requirements.txt
 ```
 
-## Add your files
+## Continuous Integration Requirements
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+We enforce some continuous integration standards. Make sure you follow them, otherwise your pull requests will be blocked until you fix them. To check if your changes pass all CI tests before you make the PR, you'll need additional packages, which you can install by running
 
-```
-cd existing_repo
-git remote add origin https://gitlab.pasqal.com/pqs/pulser/pulser-myqlm.git
-git branch -M main
-git push -uf origin main
+```shell
+pip install -r dev_requirements.txt
 ```
 
-## Integrate with your tools
+- **Tests**: We use [`pytest`](https://docs.pytest.org/en/latest/) to run unit tests on our code. If your changes break existing tests, you'll have to update these tests accordingly. Additionally, we aim for 100% coverage over our code. Try to cover all the new lines of code with simple tests, which should be placed in the `tests/` folder. To run all tests and check coverage, run:
 
-- [ ] [Set up project integrations](https://gitlab.pasqal.com/pqs/pulser/pulser-myqlm/-/settings/integrations)
+    ```bash
+    pytest --cov .
+    ```
 
-## Collaborate with your team
+    All lines that are not meant to be tested must be tagged with `# pragma: no cover`. Use it sparingly,
+    every decision to leave a line uncovered must be well justified.
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+- **Style**: We use [`flake8`](https://flake8.pycqa.org/en/latest/) and the `flake8-docstrings` extension to enforce PEP8 style guidelines. To lint your code with `flake8`, simply run:
 
-## Test and Deploy
+    ```bash
+    flake8 .
+    ```
 
-Use the built-in continuous integration in GitLab.
+    To help you keep your code compliant with PEP8 guidelines effortlessly, we suggest you look into installing a linter for your text editor of choice.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+- **Format**: We use the [`black`](https://black.readthedocs.io/en/stable/index.html) auto-formatter to enforce a consistent style throughout the entire code base, including the Jupyter notebooks (so make sure to install `black[jupyter]`). It will also ensure your code is compliant with the formatting enforced by `flake8` for you. To automatically format your code with black, just run:
 
-***
+    ```bash
+    black .
+    ```
 
-# Editing this README
+    Note that some IDE's and text editors support plug-ins which auto-format your code with `black` upon saving, so you don't have to worry about code format at all.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!).  Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+- **Import sorting**: We use [`isort`](https://pycqa.github.io/isort/) to automatically sort all library imports. You can do the same by running:
 
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+    ```bash
+    isort .
+    ```
 
-## Name
-Choose a self-explaining name for your project.
+- **Type hints**: We use [`mypy`](http://mypy-lang.org/) to type check the code. Your code should have type
+annotations and pass the type checks from running:
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+    ```bash
+    mypy
+    ```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+    In case `mypy` produces a false positive, you can ignore the respective line by adding the `# type: ignore` annotation.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+    **Note**: Type hints for `numpy` have only been added in version 1.20. Make sure you have `numpy >= 1.20`
+    installed before running the type checks.
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
 
 ## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Copyright 2023 Pasqal Quantum Solutions / Pulser Development Team
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0

@@ -1,3 +1,16 @@
+#    Copyright 2023 Pasqal Quantum Solutions / Pulser Development Team
+
+#    Licensed under the Apache License, Version 2.0 (the "License");
+#    you may not use this file except in compliance with the License.
+#    You may obtain a copy of the License at
+
+#        http://www.apache.org/licenses/LICENSE-2.0
+
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS,
+#    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#    See the License for the specific language governing permissions and
+#    limitations under the License.
 import os
 from pathlib import Path
 
@@ -26,15 +39,18 @@ with open(local_version_fpath, "w") as f:
 with open("requirements.txt") as f:
     requirements = f.read().splitlines()
 
-description = "An extension to execute MyQLM jobs on Pasqal devices."
+description = "An extension to interface MyQLM with Pulser."
 
 setup(
     name=distribution_name,
     version=__version__,
+    description=description,
     install_requires=requirements,
     packages=find_packages(),
     include_package_data=True,
+    author="Pasqal Quantum Solutions / Pulser Development Team",
     python_requires=">=3.8.0",
+    license="Apache 2.0",
 )
 
 # Restores the original source code of _version.py
