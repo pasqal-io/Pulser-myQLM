@@ -1,0 +1,5 @@
+numpy
+scipy
+pulser-core
+pulser-simulation
+myqlm>=1.7.0

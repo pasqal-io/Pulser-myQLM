@@ -1,0 +1,10 @@
+# Unit tests, coverage, type-hints and formatting/style.
+pytest-cov
+flake8-docstrings
+black[jupyter]
+isort
+mypy == 0.991
+
+# tutorials
+notebook
+python-igraph

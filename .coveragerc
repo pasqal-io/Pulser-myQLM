@@ -1,0 +1,19 @@
+# .coveragerc to control coverage.py
+[report]
+# Regexes for lines to exclude from consideration
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+    # Don't test pass statements
+    pass
+    # Can't reach with UTs
+    if TYPE_CHECKING:
+
+omit =
+    tests/*
+    setup.py
+
+show_missing = True
+
+[run]
+source = pulser_myqlm

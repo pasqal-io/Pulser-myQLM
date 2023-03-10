@@ -2,11 +2,19 @@
 
 Integration of Pulser and Pasqal devices within the Atos MyQLM framework
 
-## Getting started
+## Installation
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+To install ``pulser`` and ``myqlm``, simply clone this repository, go to its root folder and run
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+```bash
+pip install -e .
+```
+
+If you also wish to install the development requirements (optional), follow up with:
+
+```bash
+pip install -r dev_requirements.txt
+```
 
 ## Add your files
 
