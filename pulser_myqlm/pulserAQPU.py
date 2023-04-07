@@ -11,10 +11,8 @@ from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register.base_register import BaseRegister
 from qat.core import Job, Observable, Schedule, Term
 from qat.core.qpu import QPUHandler
-from qat.core.variables import ArithExpression, Variable, cos, sin
+from qat.core.variables import ArithExpression, Variable, cos, heaviside, sin
 from scipy.spatial.distance import cdist
-
-from pulser_myqlm.myqlmtools import Pheaviside, PSchedule
 
 
 class PulserAQPU(QPUHandler):
@@ -187,8 +185,7 @@ class IsingAQPU(PulserAQPU):
         seq: Sequence,
         modulation: bool = False,
         extended_duration: Optional[int] = None,
-        asPSchedule: bool = True,
-    ) -> Schedule | PSchedule:
+    ) -> Schedule:
         """Converts a Pulser Sequence to a Myqlm Schedule.
 
         For a sequence with max one declared channel, that channel being Rydberg.global
@@ -199,7 +196,6 @@ class IsingAQPU(PulserAQPU):
             seq: the sequence to convert.
             modulation: Whether to modulate the samples.
             extended_duration: duration by which to extend the samples.
-            asPSchedule: Outputs a PSchedule if True, a Schedule otherwise.
 
         Returns:
             schedule: a sum of time-dependent Ising hamiltonians.
@@ -217,7 +213,7 @@ class IsingAQPU(PulserAQPU):
                 raise TypeError("Declared channel is not Rydberg.Global.")
         else:
             # empty schedule if empty sequence
-            return PSchedule() if asPSchedule else Schedule()
+            return Schedule()
         ch_name = list(seq.declared_channels.keys())[0]
         # Sample the sequence
         ch_sample = sampler.sample(seq, modulation, extended_duration).channel_samples[
@@ -226,7 +222,7 @@ class IsingAQPU(PulserAQPU):
         tmax = ch_sample.duration
         t = Variable("t")
         # Drive coefficients represent each time-step
-        drive_coeffs = np.array([Pheaviside(t, ti, ti + 1) for ti in range(tmax)])
+        drive_coeffs = np.array([heaviside(t, ti, ti + 1) for ti in range(tmax)])
         # Drive values are Ising hamiltonian at each time-step
         drive_values = (
             qpu.pulse_observables(
@@ -239,9 +235,7 @@ class IsingAQPU(PulserAQPU):
 
         drive = np.column_stack((drive_coeffs, drive_values))
 
-        return (
-            PSchedule(drive, tmax=tmax) if asPSchedule else Schedule(drive, tmax=tmax)
-        )
+        return Schedule(drive, tmax=tmax)
 
     @classmethod
     def convert_sequence_to_job(
