@@ -241,7 +241,6 @@ def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
         IsingAQPU.convert_sequence_to_schedule(seq)
 
 
-@pytest.mark.xfail
 def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
     t0 = 16  # in ns
     H0 = test_ising_qpu.hamiltonian(omega_t, delta_t, 0)
