@@ -1,6 +1,7 @@
 """Defines Pulser AQPUs."""
 from __future__ import annotations
 
+from collections import Counter
 from typing import Optional, cast
 
 import numpy as np
@@ -9,7 +10,7 @@ from pulser.channels import Rydberg
 from pulser.devices._device_datacls import BaseDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register.base_register import BaseRegister
-from qat.core import Job, Observable, Schedule, Term
+from qat.core import Job, Observable, Result, Schedule, Term
 from qat.core.qpu import QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, heaviside, sin
 from scipy.spatial.distance import cdist
@@ -44,6 +45,27 @@ class PulserAQPU(QPUHandler):
         r"""Distances between each qubits (in :math:`\mu m`)."""
         positions = self.register._coords
         return cast(np.ndarray, cdist(positions, positions, metric="euclidean"))
+
+    def convert_pulser_samples(
+        self,
+        pulser_samples: Counter | dict[str, int],
+    ) -> Result:
+        """Converts the output of a sampling into a myqlm Result.
+
+        Args:
+            pulser_samples: A dictionary of strings describing the measured states
+                and their respective counts.
+
+        Returns:
+            Result: A myqlm Result associating each state with
+                its frequency of occurence in pulser_samples.
+        """
+        n_samples = sum(pulser_samples.values())
+        # Associates to each measured state its frequency of occurence
+        myqlm_result = Result()
+        for state, counts in pulser_samples.items():
+            myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
+        return myqlm_result
 
     def submit_job(self, job: Job) -> None:
         """Should be implemented for each qpu."""

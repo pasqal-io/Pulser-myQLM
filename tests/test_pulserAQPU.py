@@ -5,6 +5,7 @@ from pulser.channels import Raman, Rydberg
 from pulser.devices import VirtualDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.waveforms import CustomWaveform
+from pulser_simulation import Simulation
 from qat.core import Job, Schedule
 from qat.core.variables import cos, sin
 
@@ -270,9 +271,27 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
     )
     seq.add(Pulse.ConstantPulse(t1, 1, 0, 0), "ryd_glob")
     seq.add(Pulse.ConstantPulse(t2, 1, 0, np.pi / 2), "ryd_glob")
+    sim_result = Simulation(seq, sampling_rate=0.1).run()
+    n_samples = 1000
+    sim_samples = sim_result.sample_final_state(n_samples)
+    sim_samples_dict = {k: v for k, v in sim_samples.items()}
+    # Testing the conversion of the pulser samples in a myqlm result
+    myqlm_result = test_ising_qpu.convert_pulser_samples(sim_samples)
+    myqlm_result_from_dict = test_ising_qpu.convert_pulser_samples(sim_samples_dict)
+
+    myqlm_samples = {
+        sample.state.int: sample.probability for sample in myqlm_result.raw_data
+    }
+    myqlm_samples_from_dict = {
+        sample.state.int: sample.probability
+        for sample in myqlm_result_from_dict.raw_data
+    }
+    assert (
+        {int(k, 2): v / n_samples for k, v in sim_samples.items()}
+        == myqlm_samples
+        == myqlm_samples_from_dict
+    )
     schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq)
-    schedule_from_seq_dec_qpu = test_ising_qpu.convert_sequence_to_schedule(seq)
-    assert schedule_from_seq == schedule_from_seq_dec_qpu
     assert isinstance(schedule_from_seq, Schedule)
     assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
 
