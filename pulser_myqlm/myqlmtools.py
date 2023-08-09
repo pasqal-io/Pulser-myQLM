@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 from qat.core import Schedule
-from qat.core.variables import ArithExpression, Symbol
+from qat.core.variables import Symbol
 
 
 def Pheaviside_eval(t: int, t1: int, t2: int) -> int:
