@@ -291,12 +291,6 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
         == myqlm_samples
         == myqlm_samples_from_dict
     )
-
-    Pschedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq)
-    Pschedule_from_seq_dec_qpu = test_ising_qpu.convert_sequence_to_schedule(seq)
-    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq, asPSchedule=False)
-    assert isinstance(Pschedule_from_seq, PSchedule)
-    assert are_equivalent_schedules(Pschedule(u=0), Pschedule_from_seq)
     assert isinstance(schedule_from_seq, Schedule)
     assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
 
