@@ -10,7 +10,7 @@ from qat.core import Job, Schedule
 from qat.core.variables import cos, sin
 
 from pulser_myqlm import IsingAQPU
-from pulser_myqlm.myqlmtools import PSchedule, are_equivalent_schedules, mod
+from pulser_myqlm.myqlmtools import are_equivalent_schedules, mod
 
 
 def test_nbqubits(test_pulser_qpu):
@@ -219,8 +219,7 @@ def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
 def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
     # Which is equivalent to having defined pulses using a Sequence
     seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
-    assert PSchedule() == IsingAQPU.convert_sequence_to_schedule(seq)
-    assert Schedule() == IsingAQPU.convert_sequence_to_schedule(seq, asPSchedule=False)
+    assert Schedule() == IsingAQPU.convert_sequence_to_schedule(seq)
     if device_type == "raman":
         seq.declare_channel("ram_glob", "raman_global")
         with pytest.raises(
@@ -255,11 +254,6 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
     schedule1 = Schedule(drive=[(1, H1)], tmax=t1)
     schedule2 = Schedule(drive=[(1, H2)], tmax=t2)
     schedule = schedule0 | schedule1 | schedule2
-
-    Pschedule0 = PSchedule(drive=[(1, H0)], tmax=t0)
-    Pschedule1 = PSchedule(drive=[(1, H1)], tmax=t1)
-    Pschedule2 = PSchedule(drive=[(1, H2)], tmax=t2)
-    Pschedule = Pschedule0 | Pschedule1 | Pschedule2
 
     # Which is equivalent to having defined pulses using a Sequence
     seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
@@ -304,10 +298,7 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
     assert isinstance(Pschedule_from_seq, PSchedule)
     assert are_equivalent_schedules(Pschedule(u=0), Pschedule_from_seq)
     assert isinstance(schedule_from_seq, Schedule)
-    assert are_equivalent_schedules(Pschedule(u=0), schedule_from_seq)
-    assert isinstance(Pschedule_from_seq_dec_qpu, PSchedule)
-    assert are_equivalent_schedules(Pschedule(u=0), Pschedule_from_seq_dec_qpu)
-    assert not are_equivalent_schedules(schedule(u=0), Pschedule_from_seq)
+    assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
 
 
 @pytest.mark.parametrize("modulation, extended_duration", [(False, 18), (True, 0)])
