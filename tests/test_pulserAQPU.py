@@ -256,10 +256,6 @@ def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
         for qbits, term_coeff in dict_terms["Z"].items():
             assert qbits in dict_ising_int["Z"].keys()
             z_coeff = dict_ising_int["Z"][qbits] + -det / 2.0
-            print(term_coeff)
-            print(
-                z_coeff.to_thrift() if isinstance(z_coeff, ArithExpression) else z_coeff
-            )
             assert (
                 term_coeff == z_coeff.to_thrift()
                 if isinstance(z_coeff, ArithExpression)
