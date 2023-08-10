@@ -7,10 +7,31 @@ from pulser.devices.interaction_coefficients import c6_dict
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
 from qat.core import Job, Schedule
-from qat.core.variables import cos, sin
+from qat.core.variables import ArithExpression, Symbol, cos, sin
 
 from pulser_myqlm import IsingAQPU
-from pulser_myqlm.myqlmtools import are_equivalent_schedules, mod
+from pulser_myqlm.myqlmtools import are_equivalent_schedules
+
+
+def Pmod(a: float, b: float) -> float:
+    """Returns rest of euclidian division of a by b."""
+    return a % b
+
+
+mod = Symbol(token="%", evaluator=Pmod, arity=2)
+
+
+@pytest.mark.parametrize("mod_value", [(0, 0), (1, 1), (10, 0), (15, 5)])
+def test_mod(mod_value, u_variable):
+    a = mod_value[0]
+    result = mod_value[1]
+    assert Pmod(a, 10) == result
+    assert mod(a, 10) == result
+    mod_expr = mod(u_variable, 10)
+    assert isinstance(mod_expr, ArithExpression)
+    assert mod_expr.get_variables() == ["u"]
+    assert mod_expr.to_thrift() == "% u 10"
+    assert mod_expr(u=a) == result
 
 
 def test_nbqubits(test_pulser_qpu):
@@ -88,11 +109,11 @@ def test_interaction_observables(test_ising_qpu):
     # Testing the coefficient in front of each operator
     # Each c6 interaction adds c6_interaction / 4 to coeff in front of I
     assert np.isclose(
-        test_ising_qpu.interaction_observables._constant_coeff.get_value(),
+        test_ising_qpu.interaction_observables.constant_coeff,
         np.sum(np.tril(test_ising_qpu.c6_interactions) / 4.0),
         rtol=1e-15,
     )
-    for term in test_ising_qpu.interaction_observables._terms:
+    for term in test_ising_qpu.interaction_observables.terms:
         # Only "Z" or "ZZ" operator
         assert term.op in ["Z", "ZZ"]
         if term.op == "ZZ":
@@ -131,7 +152,10 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
         assert len(dict_terms[opp_index]) == 0
         assert len(dict_terms[index]) == test_ising_qpu.nbqubits
         assert len(set(dict_terms[index].values())) == 1
-        assert set(dict_terms[index].values()) == {(-1) ** (index == "Y") * amp / 2.0}
+        phase = (-1) ** (index == "Y") * amp / 2.0
+        assert set(dict_terms[index].values()) == {
+            phase if not isinstance(phase, ArithExpression) else phase.to_thrift()
+        }
 
     amp, det, phase = (
         request.getfixturevalue(pulse_attr)
@@ -142,11 +166,15 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
 
     obs = test_ising_qpu.pulse_observables(amp, det, phase)
     assert test_ising_qpu.nbqubits == obs.nbqbits
-    assert obs._constant_coeff.get_value() == 0.0
+    assert obs.constant_coeff == 0.0
     dict_terms = {"X": {}, "Y": {}, "Z": {}}
-    for term in obs._terms:
+    for term in obs.terms:
         assert term.op in dict_terms.keys()
-        dict_terms[term.op][term.qbits[0]] = term._coeff.get_value()
+        coeff = term._coeff.get_value()
+        if isinstance(coeff, ArithExpression):
+            dict_terms[term.op][term.qbits[0]] = coeff.to_thrift()
+            continue
+        dict_terms[term.op][term.qbits[0]] = coeff
 
     if amp == 0:
         assert len(dict_terms["X"]) == 0
@@ -166,15 +194,24 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
             len(set(dict_terms["X"].values())) == 1
             and len(set(dict_terms["Y"].values())) == 1
         )
-        assert set(dict_terms["X"].values()) == {cos(phase) * amp * 0.5}
-        assert set(dict_terms["Y"].values()) == {-sin(phase) * 0.5 * amp}
+        x_coeff = 0.5 * cos(phase) * amp
+        y_coeff = -0.5 * sin(phase) * amp
+        assert set(dict_terms["X"].values()) == {
+            x_coeff if not isinstance(x_coeff, ArithExpression) else x_coeff.to_thrift()
+        }
+        assert set(dict_terms["Y"].values()) == {
+            y_coeff if not isinstance(y_coeff, ArithExpression) else y_coeff.to_thrift()
+        }
 
     if det == 0:
         assert len(dict_terms["Z"]) == 0
     else:
         assert len(dict_terms["Z"]) == test_ising_qpu.nbqubits
         assert len(set(dict_terms["Z"].values())) == 1
-        assert set(dict_terms["Z"].values()) == {-(det / 2.0)}
+        z_coeff = -det / 2.0
+        assert set(dict_terms["Z"].values()) == {
+            z_coeff if not isinstance(z_coeff, ArithExpression) else z_coeff.to_thrift()
+        }
 
 
 @pytest.mark.parametrize(
@@ -204,15 +241,30 @@ def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
         dict_terms = {"X": {}, "Y": {}, "Z": {}, "ZZ": {}}
         for term in ising_ham.terms:
             assert term.op in dict_terms.keys()
-            dict_terms[term.op][tuple(term.qbits)] = term._coeff.get_value()
+            coeff = term._coeff.get_value()
+            dict_terms[term.op][tuple(term.qbits)] = (
+                coeff.to_thrift() if isinstance(coeff, ArithExpression) else coeff
+            )
 
         dict_ising_int = {"Z": {}, "ZZ": {}}
         for term in test_ising_qpu.interaction_observables.terms:
-            dict_ising_int[term.op][tuple(term.qbits)] = term._coeff.get_value()
+            coeff = term._coeff.get_value()
+            dict_ising_int[term.op][tuple(term.qbits)] = (
+                coeff.to_thrift() if isinstance(coeff, ArithExpression) else coeff
+            )
 
         for qbits, term_coeff in dict_terms["Z"].items():
             assert qbits in dict_ising_int["Z"].keys()
-            assert term_coeff == dict_ising_int["Z"][qbits] + -(det / 2.0)
+            z_coeff = dict_ising_int["Z"][qbits] + -det / 2.0
+            print(term_coeff)
+            print(
+                z_coeff.to_thrift() if isinstance(z_coeff, ArithExpression) else z_coeff
+            )
+            assert (
+                term_coeff == z_coeff.to_thrift()
+                if isinstance(z_coeff, ArithExpression)
+                else z_coeff
+            )
 
 
 @pytest.mark.parametrize("device_type", ["raman", "local"])
@@ -291,6 +343,7 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
         == myqlm_samples
         == myqlm_samples_from_dict
     )
+    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq)
     assert isinstance(schedule_from_seq, Schedule)
     assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
 

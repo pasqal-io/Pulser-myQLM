@@ -3,15 +3,6 @@ from __future__ import annotations
 
 import numpy as np
 from qat.core import Schedule
-from qat.core.variables import Symbol
-
-
-def Pmod(a: float, b: float) -> float:
-    """Returns rest of euclidian division of a by b."""
-    return a % b
-
-
-mod = Symbol(token="%", evaluator=Pmod, arity=2)
 
 
 def sample_schedule(schedule: Schedule, var_name: str = "") -> list:
@@ -36,10 +27,7 @@ def sample_schedule(schedule: Schedule, var_name: str = "") -> list:
     summed_schedule = np.sum(drive_coeffs_array * drive_obs_array)
     if not var_name:
         var_name = schedule.tname
-    if var_name not in schedule.get_variables():
-        return [summed_schedule] * schedule.tmax
-    else:
-        return [summed_schedule(**{var_name: ti}) for ti in range(schedule.tmax)]
+    return [summed_schedule(**{var_name: ti}) for ti in range(schedule.tmax)]
 
 
 def are_equivalent_schedules(

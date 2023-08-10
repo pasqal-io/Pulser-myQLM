@@ -2,7 +2,7 @@ import pytest
 from qat.core import Observable, Schedule, Term
 from qat.core.variables import ArithExpression, heaviside
 
-from pulser_myqlm.myqlmtools import Pmod, are_equivalent_schedules, mod, sample_schedule
+from pulser_myqlm.myqlmtools import are_equivalent_schedules, sample_schedule
 
 schedule1 = Schedule(
     drive=[
@@ -19,19 +19,6 @@ schedule2 = Schedule(
     tname="t",
     gamma_t=None,
 )
-
-
-@pytest.mark.parametrize("mod_value", [(0, 0), (1, 1), (10, 0), (15, 5)])
-def test_mod(mod_value, u_variable):
-    a = mod_value[0]
-    result = mod_value[1]
-    assert Pmod(a, 10) == result
-    assert mod(a, 10) == result
-    mod_expr = mod(u_variable, 10)
-    assert isinstance(mod_expr, ArithExpression)
-    assert mod_expr.get_variables() == ["u"]
-    assert mod_expr.to_thrift() == "% u 10"
-    assert mod_expr(u=a) == result
 
 
 def test_sample_schedule(t_variable):
@@ -60,27 +47,27 @@ def test_sample_schedule(t_variable):
     assert len(sample_variable_schedule) == tmax
     # Coeff of operator "X" is 2 * t, coeff of other op is 0 (including op "I").
     assert [
-        variable_schedule_ti._constant_coeff.get_value()
+        variable_schedule_ti.constant_coeff
         for variable_schedule_ti in sample_variable_schedule
     ] == [0] * tmax
     assert [
-        sample_variable_schedule[ti]._terms[0]._coeff.get_value()
+        sample_variable_schedule[ti].terms[0]._coeff.get_value()
         for ti in range(1, tmax)
     ] == [2.0 * ti for ti in range(1, tmax)]
-    assert [sample_variable_schedule[ti]._terms[0].op for ti in range(1, tmax)] == [
+    assert [sample_variable_schedule[ti].terms[0].op for ti in range(1, tmax)] == [
         "X"
     ] * (tmax - 1)
     # Test schedule constant relative to a variable.
     sample_cst_schedule = sample_schedule(t_variable * schedule, "u")
     assert len(sample_cst_schedule) == tmax
     assert [
-        variable_schedule_ti._constant_coeff.get_value()
+        variable_schedule_ti.constant_coeff
         for variable_schedule_ti in sample_cst_schedule
     ] == [0] * tmax
     assert [
-        sample_cst_schedule[ti]._terms[0]._coeff.get_value() for ti in range(1, tmax)
+        sample_cst_schedule[ti].terms[0]._coeff.get_value() for ti in range(1, tmax)
     ] == [ArithExpression.from_string("* 2.0 t")] * (tmax - 1)
-    assert [sample_cst_schedule[ti]._terms[0].op for ti in range(1, tmax)] == ["X"] * (
+    assert [sample_cst_schedule[ti].terms[0].op for ti in range(1, tmax)] == ["X"] * (
         tmax - 1
     )
 
