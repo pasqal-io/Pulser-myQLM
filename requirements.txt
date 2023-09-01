@@ -1,5 +1,4 @@
 numpy
 scipy
 pulser-core
-pulser-simulation
-myqlm>=1.7.0
+myqlm>=1.9.0

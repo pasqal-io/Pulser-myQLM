@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from functools import cached_property
 from typing import Optional, cast
 
 import numpy as np
@@ -12,10 +13,8 @@ from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register.base_register import BaseRegister
 from qat.core import Job, Observable, Result, Schedule, Term
 from qat.core.qpu import QPUHandler
-from qat.core.variables import ArithExpression, Variable, cos, sin
+from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
 from scipy.spatial.distance import cdist
-
-from pulser_myqlm.myqlmtools import Pheaviside, PSchedule
 
 
 class PulserAQPU(QPUHandler):
@@ -114,7 +113,7 @@ class IsingAQPU(PulserAQPU):
                 """
             )
 
-    @property
+    @cached_property
     def c6_interactions(self) -> np.ndarray:
         r"""C6 Interactions between the qubits (in :math:`rad/\mu s`)."""
         interactions = np.zeros((self.nbqubits, self.nbqubits))
@@ -124,77 +123,64 @@ class IsingAQPU(PulserAQPU):
         )
         return interactions
 
-    @property
+    @cached_property
     def interaction_observables(self) -> Observable:
         """Computes the interaction terms of an Ising hamiltonian."""
-        c6_interactions = self.c6_interactions
-        terms = [
-            Observable(
-                self.nbqubits,
-                pauli_terms=[
-                    Term(1.0, "II", [i, j]),
-                    Term(1.0, "IZ", [i, j]),
-                    Term(1.0, "ZI", [i, j]),
-                    Term(1.0, "ZZ", [i, j]),
-                ],
-            )
-            * c6_interactions[i, j]
+        sum_c6_rows = np.sum(self.c6_interactions, axis=0)
+        ZZ_terms = [
+            Term(self.c6_interactions[i, j] / 4, "ZZ", [i, j])
             for i in range(self.nbqubits)
             for j in range(i)
         ]
-        return sum(terms) / 4.0
+        Z_terms = [Term(sum_c6_rows[i] / 4, "Z", [i]) for i in range(self.nbqubits)]
+        return Observable(
+            self.nbqubits,
+            constant_coeff=np.sum(sum_c6_rows) / 8,
+            pauli_terms=ZZ_terms + Z_terms,
+        )
 
     def pulse_observables(
         self,
-        omega_t: ArithExpression | float | np.ndarray,
-        delta_t: ArithExpression | float | np.ndarray,
-        phi: float | np.ndarray,
-    ) -> Observable | np.ndarray:
+        omega_t: ArithExpression | float,
+        delta_t: ArithExpression | float,
+        phi: ArithExpression | float,
+    ) -> Observable:
         """Defines the terms associated to a pulse in Ising hamiltonian.
 
         Args:
             omega_t: Expression of the Rabi frequency (in rad/µs).
             delta_t: Expression of the detuning (in rad/µs).
-            phi: Value of the phase (in rad).
+            phi: Expression of the phase (in rad).
 
         Returns:
             The corresponding ising hamiltonian.
         """
-        X_observables = np.array(
-            [
-                Observable(self.nbqubits, pauli_terms=[Term(1.0, "X", [i])])
+        terms = {
+            "X": omega_t / 2.0 * cos(phi),
+            "Y": -omega_t / 2.0 * sin(phi),
+            "Z": -delta_t / 2.0,
+        }
+        return Observable(
+            self.nbqubits,
+            pauli_terms=[
+                Term(coeff, op, [i])
                 for i in range(self.nbqubits)
-            ]
+                for op, coeff in terms.items()
+            ],
         )
-        Y_observables = np.array(
-            [
-                Observable(self.nbqubits, pauli_terms=[Term(1.0, "Y", [i])])
-                for i in range(self.nbqubits)
-            ]
-        )
-        Z_observables = np.array(
-            [
-                Observable(self.nbqubits, pauli_terms=[Term(1.0, "Z", [i])])
-                for i in range(self.nbqubits)
-            ]
-        )
-
-        return omega_t / 2.0 * (
-            cos(phi) * np.sum(X_observables) - sin(phi) * np.sum(Y_observables)
-        ) - delta_t / 2.0 * np.sum(Z_observables)
 
     def hamiltonian(
         self,
-        omega_t: ArithExpression | float | np.ndarray,
-        delta_t: ArithExpression | float | np.ndarray,
-        phi: float | np.ndarray,
-    ) -> Observable | np.ndarray:
+        omega_t: ArithExpression | float,
+        delta_t: ArithExpression | float,
+        phi: ArithExpression | float,
+    ) -> Observable:
         """Defines an Ising hamiltonian from a pulse.
 
         Args:
             omega_t: Expression of the Rabi frequency (in rad/µs).
             delta_t: Expression of the detuning (in rad/µs).
-            phase: Value of the phase (in rad).
+            phase: Expression of the phase (in rad).
 
         Returns:
             The corresponding ising hamiltonian.
@@ -209,8 +195,7 @@ class IsingAQPU(PulserAQPU):
         seq: Sequence,
         modulation: bool = False,
         extended_duration: Optional[int] = None,
-        asPSchedule: bool = True,
-    ) -> Schedule | PSchedule:
+    ) -> Schedule:
         """Converts a Pulser Sequence to a Myqlm Schedule.
 
         For a sequence with max one declared channel, that channel being Rydberg.global
@@ -221,7 +206,6 @@ class IsingAQPU(PulserAQPU):
             seq: the sequence to convert.
             modulation: Whether to modulate the samples.
             extended_duration: duration by which to extend the samples.
-            asPSchedule: Outputs a PSchedule if True, a Schedule otherwise.
 
         Returns:
             schedule: a sum of time-dependent Ising hamiltonians.
@@ -239,7 +223,8 @@ class IsingAQPU(PulserAQPU):
                 raise TypeError("Declared channel is not Rydberg.Global.")
         else:
             # empty schedule if empty sequence
-            return PSchedule() if asPSchedule else Schedule()
+            return Schedule()
+
         ch_name = list(seq.declared_channels.keys())[0]
         # Sample the sequence
         ch_sample = sampler.sample(seq, modulation, extended_duration).channel_samples[
@@ -247,23 +232,15 @@ class IsingAQPU(PulserAQPU):
         ]
         tmax = ch_sample.duration
         t = Variable("t")
-        # Drive coefficients represent each time-step
-        drive_coeffs = np.array([Pheaviside(t, ti, ti + 1) for ti in range(tmax)])
+        # Convert the samples of amplitude, detuning and phase to ArithExpression.
+        omega_t = get_item(list(ch_sample.amp), t)
+        delta_t = get_item(list(ch_sample.det), t)
+        phi_t = get_item(list(ch_sample.phase), t)
         # Drive values are Ising hamiltonian at each time-step
         drive_values = (
-            qpu.pulse_observables(
-                np.array(ch_sample.amp),
-                np.array(ch_sample.det),
-                np.array(ch_sample.phase),
-            )
-            + qpu.interaction_observables
+            qpu.pulse_observables(omega_t, delta_t, phi_t) + qpu.interaction_observables
         )
-
-        drive = np.column_stack((drive_coeffs, drive_values))
-
-        return (
-            PSchedule(drive, tmax=tmax) if asPSchedule else Schedule(drive, tmax=tmax)
-        )
+        return Schedule([(1, drive_values)], tmax=tmax)
 
     @classmethod
     def convert_sequence_to_job(
