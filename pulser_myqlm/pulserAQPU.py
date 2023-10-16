@@ -127,16 +127,18 @@ class IsingAQPU(PulserAQPU):
     def interaction_observables(self) -> Observable:
         """Computes the interaction terms of an Ising hamiltonian."""
         sum_c6_rows = np.sum(self.c6_interactions, axis=0)
-        ZZ_terms = [
+        z_terms = [
             Term(self.c6_interactions[i, j] / 4, "ZZ", [i, j])
             for i in range(self.nbqubits)
             for j in range(i)
         ]
-        Z_terms = [Term(sum_c6_rows[i] / 4, "Z", [i]) for i in range(self.nbqubits)]
+        z_terms.extend(
+            [Term(sum_c6_rows[i] / 4, "Z", [i]) for i in range(self.nbqubits)]
+        )
         return Observable(
             self.nbqubits,
             constant_coeff=np.sum(sum_c6_rows) / 8,
-            pauli_terms=ZZ_terms + Z_terms,
+            pauli_terms=z_terms,
         )
 
     def pulse_observables(
@@ -237,10 +239,13 @@ class IsingAQPU(PulserAQPU):
         delta_t = get_item(list(ch_sample.det), t)
         phi_t = get_item(list(ch_sample.phase), t)
         # Drive values are Ising hamiltonian at each time-step
-        drive_values = (
-            qpu.pulse_observables(omega_t, delta_t, phi_t) + qpu.interaction_observables
+        return Schedule(
+            [
+                (1, qpu.pulse_observables(omega_t, delta_t, phi_t)),
+                (1, qpu.interaction_observables),
+            ],
+            tmax=tmax,
         )
-        return Schedule([(1, drive_values)], tmax=tmax)
 
     @classmethod
     def convert_sequence_to_job(
