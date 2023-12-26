@@ -42,7 +42,7 @@ class PulserAQPU(QPUHandler):
         self.register = register
         self.qpu = qpu
 
-    def set_qpu(self, qpu: CommonQPU | None = None):
+    def set_qpu(self, qpu: CommonQPU | None = None) -> None:
         """Set the QPU to use to simulate jobs."""
         self.qpu = qpu
 
@@ -271,7 +271,7 @@ class IsingAQPU(PulserAQPU):
         schedule = cls.convert_sequence_to_schedule(seq, modulation, extended_duration)
         return schedule.to_job()
 
-    def submit_job(self, job: Job) -> None:
+    def submit_job(self, job: Job) -> Result:
         """Submit a MyQLM job to the simulation QPU."""
         if self.qpu is None:
             raise ValueError("Define a QPU to submit job using `set_qpu`.")
