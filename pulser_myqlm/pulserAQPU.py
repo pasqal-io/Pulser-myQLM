@@ -12,7 +12,7 @@ from pulser.devices._device_datacls import BaseDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register.base_register import BaseRegister
 from qat.core import Job, Observable, Result, Schedule, Term
-from qat.core.qpu import QPUHandler
+from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
 from scipy.spatial.distance import cdist
 
@@ -26,15 +26,25 @@ class PulserAQPU(QPUHandler):
     Attributes:
         device: The device used for the computations.
         register: The register used.
+        qpu: The QPU to use when submitting a job. Can be a QPU running locally or a
+            RemoteQPU to run the job on a server.
     """
 
     device: BaseDevice
     register: BaseRegister
+    qpu: CommonQPU | None
 
-    def __init__(self, device: BaseDevice, register: BaseRegister) -> None:
+    def __init__(
+        self, device: BaseDevice, register: BaseRegister, qpu: CommonQPU | None = None
+    ) -> None:
         super().__init__()
         self.device = device
         self.register = register
+        self.qpu = qpu
+
+    def set_qpu(self, qpu: CommonQPU | None = None):
+        """Set the QPU to use to simulate jobs."""
+        self.qpu = qpu
 
     @property
     def nbqubits(self) -> int:
@@ -81,10 +91,13 @@ class IsingAQPU(PulserAQPU):
     Device and register should respect a certain set of rules:
         - Device needs at least a Rydberg channel with global addressing.
         - Can only implement Ising Hamiltonians.
+    The QPU used for the simulation must be able to run a time-dependent Job.
 
     Args:
         device: A device having a Rydberg.Global channel.
         register: A register defining the interactions between the atoms.
+        qpu: The QPU to use to submit a job. Can be a QPU running locally or a
+            RemoteQPU to run the job on a server.
     """
 
     def __init__(self, device: BaseDevice, register: BaseRegister) -> None:
@@ -259,5 +272,7 @@ class IsingAQPU(PulserAQPU):
         return schedule.to_job()
 
     def submit_job(self, job: Job) -> None:
-        """Not implemented yet."""
-        pass
+        """Submit a MyQLM job to the simulation QPU."""
+        if self.qpu is None:
+            raise ValueError("Define a QPU to submit job using `set_qpu`.")
+        return self.qpu.submit_job(job)
