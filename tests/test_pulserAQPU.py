@@ -6,8 +6,9 @@ from pulser.devices import VirtualDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
-from qat.core import Job, Schedule
+from qat.core import Job, Sample, Schedule
 from qat.core.variables import ArithExpression, Symbol, cos, sin
+from qat.qpus import PyLinalg
 
 from pulser_myqlm import IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules
@@ -366,3 +367,39 @@ def test_convert_sequence_to_job(test_ising_qpu, modulation, extended_duration):
         seq, modulation, extended_duration
     )
     assert are_equivalent_schedules(schedule_from_seq, job_from_seq.schedule)
+
+
+def test_run_sequence(test_ising_qpu):
+    np.random.seed(123)
+    # Which is equivalent to having defined pulses using a Sequence
+    seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
+    seq.declare_channel("ryd_glob", "rydberg_global")
+    seq.add(Pulse.ConstantPulse(100, 1, 0, 0), "ryd_glob")
+    aqpu = IsingAQPU.from_sequence(seq)
+    job_from_seq = aqpu.convert_sequence_to_job(seq)
+    result = aqpu.submit_job(job_from_seq, n_samples=1000)
+    assert result.raw_data == [
+        Sample(
+            probability=0.989,
+            state=0,
+        ),
+        Sample(
+            probability=0.002,
+            state=1,
+        ),
+        Sample(probability=0.002, state=2),
+        Sample(probability=0.004, state=4),
+        Sample(probability=0.003, state=8),
+    ]
+    t1 = 20  # in ns
+    H1 = test_ising_qpu.hamiltonian(1, 0, 0)
+    schedule = Schedule(drive=[(1, H1)], tmax=t1)
+    job = schedule.to_job()
+    # Can't simulate with pulser_simulation if no information about
+    # the Sequence can be found in the job
+    with pytest.raises(ValueError, match="If no QPU is defined,"):
+        aqpu.submit_job(job)
+    # Can't simulate a time-dependent job with a PyLinalg AQPU
+    aqpu.set_qpu(PyLinalg())
+    with pytest.raises(TypeError, match="'NoneType' object is not"):
+        aqpu.submit_job(job)

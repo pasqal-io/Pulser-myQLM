@@ -23,8 +23,11 @@ seq.add(
 seq.add(Pulse.ConstantPulse(20, 1, 0, 0), "ryd_glob")
 seq.add(Pulse.ConstantPulse(20, 1, 0, np.pi / 2), "ryd_glob")
 
-# Convert to MyQLM Job
-IsingAQPU.convert_sequence_to_job(seq)
+# Create an AnalogQPU for simulation
+aqpu = IsingAQPU.from_sequence(seq, qpu=None)
 
-# Convert to MyQLM Schedule
-IsingAQPU.convert_sequence_to_schedule(seq)
+# Convert the Sequence to a Job
+job = aqpu.convert_sequence_to_job(seq)
+
+# Simulate the Job using pulser_simulation
+results = aqpu.submit_job(job, 1000)

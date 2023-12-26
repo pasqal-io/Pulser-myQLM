@@ -1,6 +1,7 @@
 """Defines Pulser AQPUs."""
 from __future__ import annotations
 
+import warnings
 from collections import Counter
 from functools import cached_property
 from typing import Optional, cast
@@ -11,6 +12,7 @@ from pulser.channels import Rydberg
 from pulser.devices._device_datacls import BaseDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register.base_register import BaseRegister
+from pulser_simulation import QutipEmulator
 from qat.core import Job, Observable, Result, Schedule, Term
 from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
@@ -26,8 +28,10 @@ class PulserAQPU(QPUHandler):
     Attributes:
         device: The device used for the computations.
         register: The register used.
-        qpu: The QPU to use when submitting a job. Can be a QPU running locally or a
-            RemoteQPU to run the job on a server.
+        qpu: The QPU to use when submitting a Job. By default or if the QPU is None,
+            pulser-simulation is used to simulate the Sequence associated to the Job
+            locally. Otherwise, it can be a QPU running locally or a RemoteQPU to
+            run the Job on a server.
     """
 
     device: BaseDevice
@@ -43,7 +47,13 @@ class PulserAQPU(QPUHandler):
         self.qpu = qpu
 
     def set_qpu(self, qpu: CommonQPU | None = None) -> None:
-        """Set the QPU to use to simulate jobs."""
+        """Set the QPU to use to simulate jobs.
+
+        Args:
+            qpu: If None, pulser-simulation is used to simulate the Sequence
+                associated to the Job. Otherwise, it can be a QPU running locally or a
+                RemoteQPU to run the Job on a server.
+        """
         self.qpu = qpu
 
     @property
@@ -100,14 +110,16 @@ class IsingAQPU(PulserAQPU):
             RemoteQPU to run the job on a server.
     """
 
-    def __init__(self, device: BaseDevice, register: BaseRegister) -> None:
-        super().__init__(device=device, register=register)
+    def __init__(
+        self, device: BaseDevice, register: BaseRegister, qpu: CommonQPU | None = None
+    ) -> None:
+        super().__init__(device=device, register=register, qpu=qpu)
         self.check_channels_device(self.device)
 
     @classmethod
-    def from_sequence(cls, seq: Sequence) -> IsingAQPU:
+    def from_sequence(cls, seq: Sequence, qpu: CommonQPU | None = None) -> IsingAQPU:
         """Creates an IsingAQPU with the device, register of a Sequence."""
-        return cls(seq.device, seq.register)
+        return cls(seq.device, seq.register, qpu)
 
     def check_channels_device(self, device: BaseDevice) -> None:
         """Check that the device has a Rydberg.Global channel."""
@@ -252,13 +264,17 @@ class IsingAQPU(PulserAQPU):
         delta_t = get_item(list(ch_sample.det), t)
         phi_t = get_item(list(ch_sample.phase), t)
         # Drive values are Ising hamiltonian at each time-step
-        return Schedule(
+        sch = Schedule(
             [
                 (1, qpu.pulse_observables(omega_t, delta_t, phi_t)),
                 (1, qpu.interaction_observables),
             ],
             tmax=tmax,
         )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Register serialization", UserWarning)
+            sch._other = seq.to_abstract_repr()
+        return sch
 
     @classmethod
     def convert_sequence_to_job(
@@ -271,8 +287,17 @@ class IsingAQPU(PulserAQPU):
         schedule = cls.convert_sequence_to_schedule(seq, modulation, extended_duration)
         return schedule.to_job()
 
-    def submit_job(self, job: Job) -> Result:
+    def submit_job(self, job: Job, n_samples: int = 1000) -> Result:
         """Submit a MyQLM job to the simulation QPU."""
         if self.qpu is None:
-            raise ValueError("Define a QPU to submit job using `set_qpu`.")
+            if job.schedule._other is None:
+                raise ValueError(
+                    "If no QPU is defined, provide an abstract representation of the "
+                    "Sequence associated to the Job in the Job.schedule._other. "
+                    "Otherwise, define a QPU using `set_qpu`."
+                )
+            seq = Sequence.from_abstract_repr(job.schedule._other)
+            emulator = QutipEmulator.from_sequence(seq)
+            pulser_samples = emulator.run().sample_final_state(n_samples)
+            return self.convert_pulser_samples(pulser_samples)
         return self.qpu.submit_job(job)
