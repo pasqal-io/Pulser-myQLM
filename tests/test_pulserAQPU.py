@@ -266,9 +266,11 @@ def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
 
 @pytest.mark.parametrize("device_type", ["raman", "local"])
 def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
-    # Which is equivalent to having defined pulses using a Sequence
+    # An empty sequence returns an empty Schedule
     seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
     assert Schedule() == IsingAQPU.convert_sequence_to_schedule(seq)
+    # Conversion only works for Rydberg Global channel
+    # Does not work if a Raman Global channel is declared
     if device_type == "raman":
         seq.declare_channel("ram_glob", "raman_global")
         with pytest.raises(
@@ -276,6 +278,7 @@ def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
             match="Declared channel is not Rydberg.",
         ):
             IsingAQPU.convert_sequence_to_schedule(seq)
+    # Does not work if a Local Rydberg channel is declared
     elif device_type == "local":
         seq.declare_channel("ryd_loc", "rydberg_local")
         with pytest.raises(
@@ -283,7 +286,10 @@ def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
             match="Declared channel is not Rydberg.Global.",
         ):
             IsingAQPU.convert_sequence_to_schedule(seq)
+    # Does not work if multiple Rydberg Global channels are declared
+    seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
     seq.declare_channel("ryd_glob", "rydberg_global")
+    seq.declare_channel("ryd_glob1", "rydberg_global")
     with pytest.raises(
         ValueError,
         match="More than one channel declared.",
@@ -362,11 +368,20 @@ def test_convert_sequence_to_job(test_ising_qpu, modulation, extended_duration):
         seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
     seq.declare_channel("ryd_glob", "rydberg_global")
     seq.add(Pulse.ConstantPulse(16, 1, 0, 0), "ryd_glob")
-    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, modulation, extended_duration)
+    job_from_seq = IsingAQPU.convert_sequence_to_job(
+        seq, modulation=modulation, extended_duration=extended_duration
+    )
     schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(
         seq, modulation, extended_duration
     )
     assert are_equivalent_schedules(schedule_from_seq, job_from_seq.schedule)
+    assert job_from_seq.nbshots == 0
+    assert schedule_from_seq.to_job().nbshots is None
+    assert (
+        job_from_seq.schedule._other["abstr_seq"]
+        == schedule_from_seq._other["abstr_seq"]
+    )
+    assert job_from_seq.schedule._other["modulation"] == modulation
 
 
 def test_run_sequence(test_ising_qpu):
@@ -376,8 +391,10 @@ def test_run_sequence(test_ising_qpu):
     seq.declare_channel("ryd_glob", "rydberg_global")
     seq.add(Pulse.ConstantPulse(100, 1, 0, 0), "ryd_glob")
     aqpu = IsingAQPU.from_sequence(seq)
-    job_from_seq = aqpu.convert_sequence_to_job(seq)
-    result = aqpu.submit_job(job_from_seq, n_samples=1000)
+    # Run job created from a sequence
+    job_from_seq = aqpu.convert_sequence_to_job(seq, nbshots=1000)
+    assert job_from_seq.nbshots == 1000
+    result = aqpu.submit_job(job_from_seq)
     assert result.raw_data == [
         Sample(
             probability=0.989,
@@ -391,14 +408,28 @@ def test_run_sequence(test_ising_qpu):
         Sample(probability=0.004, state=4),
         Sample(probability=0.003, state=8),
     ]
+    # Run job created from a schedule
+    # Can't simulate with pulser_simulation if no information about
+    # the Sequence can be found in the job
     t1 = 20  # in ns
     H1 = test_ising_qpu.hamiltonian(1, 0, 0)
     schedule = Schedule(drive=[(1, H1)], tmax=t1)
     job = schedule.to_job()
-    # Can't simulate with pulser_simulation if no information about
-    # the Sequence can be found in the job
     with pytest.raises(ValueError, match="If no QPU is defined,"):
         aqpu.submit_job(job)
+    # Use IsingAQPU converter to have information about the sequence in the job
+    schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
+    job_from_seq = schedule_from_seq.to_job()  # max nb shots
+    assert not job_from_seq.nbshots
+    result_schedule = aqpu.submit_job(job_from_seq)
+    print(result_schedule.raw_data)
+    assert result_schedule.raw_data == [
+        Sample(probability=0.991, state=0),
+        Sample(probability=0.002, state=1),
+        Sample(probability=0.003, state=2),
+        Sample(probability=0.001, state=4),
+        Sample(probability=0.003, state=8),
+    ]
     # Can't simulate a time-dependent job with a PyLinalg AQPU
     aqpu.set_qpu(PyLinalg())
     with pytest.raises(TypeError, match="'NoneType' object is not"):

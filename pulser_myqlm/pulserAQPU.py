@@ -273,22 +273,36 @@ class IsingAQPU(PulserAQPU):
         )
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", "Register serialization", UserWarning)
-            sch._other = seq.to_abstract_repr()
+            sch._other = {"abstr_seq": seq.to_abstract_repr(), "modulation": modulation}
         return sch
 
     @classmethod
     def convert_sequence_to_job(
         cls,
         seq: Sequence,
+        nbshots: int = 0,
         modulation: bool = False,
         extended_duration: Optional[int] = None,
     ) -> Job:
-        """Converts a Pulser Sequence to a Myqlm Job."""
-        schedule = cls.convert_sequence_to_schedule(seq, modulation, extended_duration)
-        return schedule.to_job()
+        """Converts a Pulser Sequence to a Myqlm Job.
 
-    def submit_job(self, job: Job, n_samples: int = 1000) -> Result:
-        """Submit a MyQLM job to the simulation QPU."""
+        Args:
+            seq: The Pulser Sequence to convert.
+            nbshots: The number of shots to perform. Default to 0 (max number of shots
+                that can be performed on the qpu).
+            modulation: Whether to modulate the samples of the Sequence.
+            extended_duration: If defined, extends the samples duration to the
+                desired value.
+        """
+        schedule = cls.convert_sequence_to_schedule(seq, modulation, extended_duration)
+        return schedule.to_job(nbshots=nbshots)
+
+    def submit_job(self, job: Job) -> Result:
+        """Submit a MyQLM job to the QPU.
+
+        If no QPU has been provided, simulation of the sequence associated with the job
+        is performed via pulser_simulation. Default number of shots is 2000.
+        """
         if self.qpu is None:
             if job.schedule._other is None:
                 raise ValueError(
@@ -296,8 +310,12 @@ class IsingAQPU(PulserAQPU):
                     "Sequence associated to the Job in the Job.schedule._other. "
                     "Otherwise, define a QPU using `set_qpu`."
                 )
-            seq = Sequence.from_abstract_repr(job.schedule._other)
-            emulator = QutipEmulator.from_sequence(seq)
-            pulser_samples = emulator.run().sample_final_state(n_samples)
+            seq = Sequence.from_abstract_repr(job.schedule._other["abstr_seq"])
+            emulator = QutipEmulator.from_sequence(
+                seq, with_modulation=job.schedule._other["modulation"]
+            )
+            pulser_samples = emulator.run().sample_final_state(
+                2000 if not job.nbshots else job.nbshots
+            )
             return self.convert_pulser_samples(pulser_samples)
         return self.qpu.submit_job(job)
