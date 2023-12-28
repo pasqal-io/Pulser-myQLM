@@ -1,12 +1,15 @@
 """Defines Pulser AQPUs."""
 from __future__ import annotations
 
+import json
+import os
 import warnings
 from collections import Counter
 from functools import cached_property
 from typing import Optional, cast
 
 import numpy as np
+import requests
 from pulser import Sequence, sampler
 from pulser.channels import Rydberg
 from pulser.devices._device_datacls import BaseDevice
@@ -67,8 +70,8 @@ class PulserAQPU(QPUHandler):
         positions = self.register._coords
         return cast(np.ndarray, cdist(positions, positions, metric="euclidean"))
 
+    @staticmethod
     def convert_pulser_samples(
-        self,
         pulser_samples: Counter | dict[str, int],
     ) -> Result:
         """Converts the output of a sampling into a myqlm Result.
@@ -319,3 +322,91 @@ class IsingAQPU(PulserAQPU):
             )
             return self.convert_pulser_samples(pulser_samples)
         return self.qpu.submit_job(job)
+
+
+class FresnelQPU(QPUHandler):
+    r"""Fresnel Quantum Processing Unit.
+
+    Args:
+        base_uri: A string of shape 'https://myserver.com/api'.
+        version: The version of the API to use, added at the end of the base URI.
+        max_nbshots: The maximum number of shots per job. Default to 2000.
+    """
+
+    def __init__(
+        self,
+        base_uri,
+        version="latest",
+        max_nbshots: int = 2000,
+        cancel_previous_job: bool = False,
+    ):
+        super.__init__(self)
+        # api-endpoint
+        self.max_nbshots = max_nbshots
+        self.cancel_previous_job = cancel_previous_job
+        self.base_uri = base_uri + "/" + version
+        self.update_system()
+        self.print_system()
+        self.check_system()
+
+    def update_system(self):
+        self.system = requests.get(url=self.base_uri + "/system").json()
+
+    def print_system(self):
+        print("Using QPU: ", self.system["model_name"])
+        print("With ID: ", self.system["serial_number"])
+        print("QPU mode: ", self.system["mode"])
+        print("QPU status: ", self.system["status"])
+        print("Time to idle: ", self.system["time_to_idle"])
+
+    def check_system(self):
+        if self.system["mode"] != "MODE_OPERATION":
+            raise OSError(
+                "QPU not operational, please run calibration and validation of the "
+                "devices prior to creating the FresnelQPU"
+            )
+        if self.system["status"] == "FAILURE":
+            raise OSError(
+                "The QPU has failed its last job and can't recover. Operator "
+                "intervention is required."
+            )
+
+    def submit_job(self, job: Job, cancel_previous_job: bool | None = None):
+        """Submit a MyQLM job encapsulating a Pulser Sequence to the QPU."""
+        if job.schedule._other is None:
+            raise ValueError(
+                "You must provide an abstract representation of the Sequence associated"
+                " to the Job in the Job.schedule._other."
+            )
+        if "abstr_seq" not in job.schedule._other:
+            raise ValueError(
+                "An abstract representation of the Sequence to run must be provided under "
+                "the key 'abstr_seq' in job.schedule._other."
+            )
+        self.update_system()
+        self.print_system()
+        self.check_system()
+        api_job = {
+            "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
+            "pulser": job.schedule._other["abstr_seq"],
+            "cancel_previous_job": self.cancel_previous_job
+            if cancel_previous_job is not None
+            else cancel_previous_job,
+        }
+        api_job_return = requests.post(self.base_uri + "/job", json=api_job).json()
+        if api_job_return["status"] == "ERROR":
+            raise RuntimeError(
+                "An error occured, check locally the Sequence before submitting."
+            )
+        assert api_job_return["client_id"] == 201
+        self.update_system()
+        os.wait(self.system["time_to_idle"])
+        api_job_out = requests.get(
+            self.base_uri + f"/jobs/{api_job_return['uid']}"
+        ).json()
+        assert api_job_out["status"] == "DONE"
+        pulser_json_result = api_job_out["result"]
+        if pulser_json_result is None:
+            return Result()
+        pulser_result = json.loads(pulser_json_result)
+        return PulserAQPU.convert_pulser_samples(pulser_result)
