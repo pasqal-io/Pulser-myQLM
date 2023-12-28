@@ -351,8 +351,8 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
     assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
 
 
-@pytest.mark.parametrize("modulation, extended_duration", [(False, 18), (True, 0)])
-def test_convert_sequence_to_job(test_ising_qpu, modulation, extended_duration):
+@pytest.mark.parametrize("modulation", [False, True])
+def test_convert_sequence_to_job(test_ising_qpu, modulation):
     # Which is equivalent to having defined pulses using a Sequence
     if modulation:
         device = VirtualDevice(
@@ -368,12 +368,8 @@ def test_convert_sequence_to_job(test_ising_qpu, modulation, extended_duration):
         seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
     seq.declare_channel("ryd_glob", "rydberg_global")
     seq.add(Pulse.ConstantPulse(16, 1, 0, 0), "ryd_glob")
-    job_from_seq = IsingAQPU.convert_sequence_to_job(
-        seq, modulation=modulation, extended_duration=extended_duration
-    )
-    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(
-        seq, modulation, extended_duration
-    )
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, modulation=modulation)
+    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq, modulation)
     assert are_equivalent_schedules(schedule_from_seq, job_from_seq.schedule)
     assert job_from_seq.nbshots == 0
     assert schedule_from_seq.to_job().nbshots is None
@@ -386,7 +382,6 @@ def test_convert_sequence_to_job(test_ising_qpu, modulation, extended_duration):
 
 def test_run_sequence(test_ising_qpu):
     np.random.seed(123)
-    # Which is equivalent to having defined pulses using a Sequence
     seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
     seq.declare_channel("ryd_glob", "rydberg_global")
     seq.add(Pulse.ConstantPulse(100, 1, 0, 0), "ryd_glob")
@@ -415,8 +410,12 @@ def test_run_sequence(test_ising_qpu):
     H1 = test_ising_qpu.hamiltonian(1, 0, 0)
     schedule = Schedule(drive=[(1, H1)], tmax=t1)
     job = schedule.to_job()
-    with pytest.raises(ValueError, match="If no QPU is defined,"):
+    with pytest.raises(ValueError, match="An abstract representation of the Sequence"):
         aqpu.submit_job(job)
+    job.schedule._other = seq
+    with pytest.raises(ValueError, match="An abstract representation of the Sequence"):
+        aqpu.submit_job(job)
+    job.schedule._other = {"abst_rep": 0}
     # Use IsingAQPU converter to have information about the sequence in the job
     schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
     job_from_seq = schedule_from_seq.to_job()  # max nb shots

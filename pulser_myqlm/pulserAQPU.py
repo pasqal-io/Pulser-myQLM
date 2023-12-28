@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import json
-import os
+import time
 import warnings
 from collections import Counter
 from functools import cached_property
-from typing import Optional, cast
+from typing import cast
 
 import numpy as np
 import requests
@@ -47,7 +47,7 @@ class PulserAQPU(QPUHandler):
         super().__init__()
         self.device = device
         self.register = register
-        self.qpu = qpu
+        self.set_qpu(qpu)
 
     def set_qpu(self, qpu: CommonQPU | None = None) -> None:
         """Set the QPU to use to simulate jobs.
@@ -224,21 +224,22 @@ class IsingAQPU(PulserAQPU):
         cls,
         seq: Sequence,
         modulation: bool = False,
-        extended_duration: Optional[int] = None,
     ) -> Schedule:
         """Converts a Pulser Sequence to a Myqlm Schedule.
 
-        For a sequence with max one declared channel, that channel being Rydberg.global
-        Samples the channel, eventually extends its duration or modulates it.
-        Outputs a time dependent hamiltonian defined at each time-step using heaviside.
+        For a Sequence with max one declared channel, that channel being Rydberg.Global.
+        Samples the Sequence, eventually modulates it using its modulation bandwidth.
+        Outputs a time-dependent Ising Hamiltonian in a Schedule.
 
         Args:
-            seq: the sequence to convert.
-            modulation: Whether to modulate the samples.
-            extended_duration: duration by which to extend the samples.
+            seq: The Pulser Sequence to convert.
+            modulation: Whether the Schedule should contain modulated samples or not.
+                Modulation is performed using the modulation bandwidth of the channel,
+                it is used in simulations to model more accurately the behaviour of the
+                channel.
 
         Returns:
-            schedule: a sum of time-dependent Ising hamiltonians.
+            schedule: A MyQLM Schedule representing a time-dependent Ising hamiltonian.
         """
         qpu = cls.from_sequence(seq)
         # Check that the sequence has only one global channel declared
@@ -257,9 +258,7 @@ class IsingAQPU(PulserAQPU):
 
         ch_name = list(seq.declared_channels.keys())[0]
         # Sample the sequence
-        ch_sample = sampler.sample(seq, modulation, extended_duration).channel_samples[
-            ch_name
-        ]
+        ch_sample = sampler.sample(seq, modulation).channel_samples[ch_name]
         tmax = ch_sample.duration
         t = Variable("t")
         # Convert the samples of amplitude, detuning and phase to ArithExpression.
@@ -285,63 +284,93 @@ class IsingAQPU(PulserAQPU):
         seq: Sequence,
         nbshots: int = 0,
         modulation: bool = False,
-        extended_duration: Optional[int] = None,
     ) -> Job:
         """Converts a Pulser Sequence to a Myqlm Job.
 
+        For a Sequence with max one declared channel, that channel being Rydberg.Global.
+        Samples the Sequence, eventually modulates it using its modulation bandwidth.
+        Outputs a Job with a time-dependent Ising Hamiltonian in its Schedule.
+
         Args:
             seq: The Pulser Sequence to convert.
-            nbshots: The number of shots to perform. Default to 0 (max number of shots
-                that can be performed on the qpu).
-            modulation: Whether to modulate the samples of the Sequence.
-            extended_duration: If defined, extends the samples duration to the
-                desired value.
+            nbshots: The number of shots to perform. Default to 0 (asks for the max
+                number of shots that can be performed on the qpu).
+            modulation: Whether the Schedule of the Job should contain modulated
+                samples. Modulation is performed using the modulation bandwidth of the
+                channel, it is used in simulations to model more accurately the
+                behaviour of the channel.
+
+        Returns:
+            job: a Job with a time-dependent Ising hamiltonian in its schedule.
         """
-        schedule = cls.convert_sequence_to_schedule(seq, modulation, extended_duration)
+        schedule = cls.convert_sequence_to_schedule(seq, modulation)
         return schedule.to_job(nbshots=nbshots)
 
-    def submit_job(self, job: Job) -> Result:
+    def submit_job(self, job: Job, **kwargs) -> Result:  # type: ignore
         """Submit a MyQLM job to the QPU.
 
-        If no QPU has been provided, simulation of the sequence associated with the job
-        is performed via pulser_simulation. Default number of shots is 2000.
+        If no QPU has been provided, simulation of the Pulser Sequence associated with
+        the MyQLM Job is performed using pulser_simulation. Default number of shots is
+        2000. Pulser Sequence should be provided inside a dict in job.schedule._other,
+        under the key "abstr_seq". Whether to simulate using modulated samples of the
+        Sequence is defined by the value associated to "modulation" in this dictionary.
+
+        Args:
+            job: the MyQLM Job to run.
+
+        Kwargs:
+            Kwargs of the defined QPU.
         """
-        if self.qpu is None:
-            if job.schedule._other is None:
-                raise ValueError(
-                    "If no QPU is defined, provide an abstract representation of the "
-                    "Sequence associated to the Job in the Job.schedule._other. "
-                    "Otherwise, define a QPU using `set_qpu`."
-                )
-            seq = Sequence.from_abstract_repr(job.schedule._other["abstr_seq"])
-            emulator = QutipEmulator.from_sequence(
-                seq, with_modulation=job.schedule._other["modulation"]
+        if self.qpu is not None:
+            return self.qpu.submit_job(job, **kwargs)
+        if (
+            job.schedule._other is None
+            or not isinstance(job.schedule._other, dict)
+            or "abstr_seq" not in job.schedule._other
+        ):
+            raise ValueError(
+                "An abstract representation of the Sequence must be associated with the"
+                " 'abstr_seq' key of the dictionary in Job.schedule._other."
             )
-            pulser_samples = emulator.run().sample_final_state(
-                2000 if not job.nbshots else job.nbshots
-            )
-            return self.convert_pulser_samples(pulser_samples)
-        return self.qpu.submit_job(job)
+        seq = Sequence.from_abstract_repr(job.schedule._other["abstr_seq"])
+        emulator = QutipEmulator.from_sequence(
+            seq,
+            with_modulation=False
+            if "modulation" not in job.schedule._other
+            else job.schedule._other["modulation"],
+        )
+        pulser_samples = emulator.run().sample_final_state(
+            2000 if not job.nbshots else job.nbshots
+        )
+        return self.convert_pulser_samples(pulser_samples)
 
 
 class FresnelQPU(QPUHandler):
     r"""Fresnel Quantum Processing Unit.
 
+    Connects to the API of the machine via a base_uri. Tests that the machine is
+    operational to launch jobs on it. By default, jobs are added in a queue. If you'd
+    rather want new jobs to replace old ones, you should define it in its
+    `cancel_previous_job` attribute. To deploy this QPU on a server, use its `serve`
+    method. Any client can then access this QPU remotly using a `RemoteQPU` with
+    correct port and IP.
+
     Args:
         base_uri: A string of shape 'https://myserver.com/api'.
         version: The version of the API to use, added at the end of the base URI.
         max_nbshots: The maximum number of shots per job. Default to 2000.
+        cancel_previous_job: Whether or not new jobs should cancel old jobs or not.
+            Default to False.
     """
 
     def __init__(
         self,
-        base_uri,
-        version="latest",
+        base_uri: str,
+        version: str = "latest",
         max_nbshots: int = 2000,
         cancel_previous_job: bool = False,
     ):
         super.__init__(self)
-        # api-endpoint
         self.max_nbshots = max_nbshots
         self.cancel_previous_job = cancel_previous_job
         self.base_uri = base_uri + "/" + version
@@ -349,17 +378,20 @@ class FresnelQPU(QPUHandler):
         self.print_system()
         self.check_system()
 
-    def update_system(self):
+    def update_system(self) -> None:
+        """Get the current state of the system."""
         self.system = requests.get(url=self.base_uri + "/system").json()
 
-    def print_system(self):
+    def print_system(self) -> None:
+        """Print system's name and id, as well as its mode, status and time to idle."""
         print("Using QPU: ", self.system["model_name"])
         print("With ID: ", self.system["serial_number"])
         print("QPU mode: ", self.system["mode"])
         print("QPU status: ", self.system["status"])
         print("Time to idle: ", self.system["time_to_idle"])
 
-    def check_system(self):
+    def check_system(self) -> None:
+        """Check that the system is operational."""
         if self.system["mode"] != "MODE_OPERATION":
             raise OSError(
                 "QPU not operational, please run calibration and validation of the "
@@ -371,21 +403,23 @@ class FresnelQPU(QPUHandler):
                 "intervention is required."
             )
 
-    def submit_job(self, job: Job, cancel_previous_job: bool | None = None):
+    def submit_job(self, job: Job, cancel_previous_job: bool | None = None) -> Result:
         """Submit a MyQLM job encapsulating a Pulser Sequence to the QPU."""
-        if job.schedule._other is None:
+        if (
+            job.schedule._other is None
+            or not isinstance(job.schedule._other, dict)
+            or "abstr_seq" not in job.schedule._other
+        ):
             raise ValueError(
-                "You must provide an abstract representation of the Sequence associated"
-                " to the Job in the Job.schedule._other."
+                "An abstract representation of the Sequence must be associated with the"
+                " 'abstr_seq' key of the dictionary in Job.schedule._other."
             )
-        if "abstr_seq" not in job.schedule._other:
-            raise ValueError(
-                "An abstract representation of the Sequence to run must be provided under "
-                "the key 'abstr_seq' in job.schedule._other."
-            )
+        # Check that the system is operational
         self.update_system()
         self.print_system()
         self.check_system()
+
+        # Submit a job to the API
         api_job = {
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
             "pulser": job.schedule._other["abstr_seq"],
@@ -394,18 +428,23 @@ class FresnelQPU(QPUHandler):
             else cancel_previous_job,
         }
         api_job_return = requests.post(self.base_uri + "/job", json=api_job).json()
+
+        # Wait for the job to be over
+        while api_job_return["status"] not in ["ERROR", "DONE"]:
+            assert api_job_return["status"] in ["PENDING", "RUNNING"]
+            api_job_return = requests.get(
+                self.base_uri + f"/jobs/{api_job_return['uid']}"
+            ).json()
+            time.sleep(10)
+
+        # Check that the job submission went well
         if api_job_return["status"] == "ERROR":
             raise RuntimeError(
-                "An error occured, check locally the Sequence before submitting."
+                "An error occured, check locally the Sequence before submitting or "
+                "contact the support."
             )
-        assert api_job_return["client_id"] == 201
-        self.update_system()
-        os.wait(self.system["time_to_idle"])
-        api_job_out = requests.get(
-            self.base_uri + f"/jobs/{api_job_return['uid']}"
-        ).json()
-        assert api_job_out["status"] == "DONE"
-        pulser_json_result = api_job_out["result"]
+        # Convert the output of the API into a MyQLM Result
+        pulser_json_result = api_job_return["result"]
         if pulser_json_result is None:
             return Result()
         pulser_result = json.loads(pulser_json_result)
