@@ -5,9 +5,6 @@ black[jupyter]
 isort
 mypy == 0.991
 
-# to run the tests
-pulser-simulation>=0.14.0
-
 # tutorials
 notebook
 python-igraph
