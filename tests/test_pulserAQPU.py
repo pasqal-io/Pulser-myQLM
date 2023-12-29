@@ -6,7 +6,7 @@ from pulser.devices import VirtualDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
-from qat.core import Job, Sample, Schedule
+from qat.core import Sample, Schedule
 from qat.core.variables import ArithExpression, Symbol, cos, sin
 from qat.qpus import PyLinalg
 
@@ -35,11 +35,11 @@ def test_mod(mod_value, u_variable):
     assert mod_expr(u=a) == result
 
 
-def test_nbqubits(test_pulser_qpu):
-    assert test_pulser_qpu.nbqubits == 4
+def test_nbqubits(test_ising_qpu):
+    assert test_ising_qpu.nbqubits == 4
 
 
-def test_distances(test_pulser_qpu):
+def test_distances(test_ising_qpu):
     dist_tl = np.array(
         [
             [0, 0, 0, 0],
@@ -48,15 +48,7 @@ def test_distances(test_pulser_qpu):
             [4 * np.sqrt(2), 4, 4, 0],
         ]
     )
-    assert np.all(test_pulser_qpu.distances == dist_tl + dist_tl.T)
-
-
-def test_submit_job_pulser_qpu(test_pulser_qpu):
-    with pytest.raises(
-        NotImplementedError,
-        match="Submit job only implemented for hardware-specific qpus, not PulserAQPU.",
-    ):
-        test_pulser_qpu.submit_job(Job())
+    assert np.all(test_ising_qpu.distances == dist_tl + dist_tl.T)
 
 
 def test_ising_init(test_ising_qpu):
