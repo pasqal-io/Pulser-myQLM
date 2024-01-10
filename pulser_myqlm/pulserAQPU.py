@@ -90,7 +90,7 @@ class IsingAQPU(QPUHandler):
     @property
     def distances(self) -> np.ndarray:
         r"""Distances between each qubits (in :math:`\mu m`)."""
-        positions = self.register._coords
+        positions = np.array(list(self.register.qubits.values()))
         return cast(np.ndarray, cdist(positions, positions, metric="euclidean"))
 
     @cached_property
