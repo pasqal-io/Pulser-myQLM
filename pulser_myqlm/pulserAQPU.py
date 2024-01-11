@@ -22,83 +22,7 @@ from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
 from scipy.spatial.distance import cdist
 
 
-class PulserAQPU(QPUHandler):
-    r"""Base class of a Pulser Analog Quantum Processing Unit.
-
-    A PulserAQPU is defined by a Device and a Register.
-    The Observable given in the job are in :math:`\hbar rad/\mu s`.
-
-    Attributes:
-        device: The device used for the computations.
-        register: The register used.
-        qpu: The QPU to use when submitting a Job. By default or if the QPU is None,
-            pulser-simulation is used to simulate the Sequence associated to the Job
-            locally. Otherwise, it can be a QPU running locally or a RemoteQPU to
-            run the Job on a server.
-    """
-
-    device: BaseDevice
-    register: BaseRegister
-    qpu: CommonQPU | None
-
-    def __init__(
-        self, device: BaseDevice, register: BaseRegister, qpu: CommonQPU | None = None
-    ) -> None:
-        super().__init__()
-        self.device = device
-        self.register = register
-        self.set_qpu(qpu)
-
-    def set_qpu(self, qpu: CommonQPU | None = None) -> None:
-        """Set the QPU to use to simulate jobs.
-
-        Args:
-            qpu: If None, pulser-simulation is used to simulate the Sequence
-                associated to the Job. Otherwise, it can be a QPU running locally or a
-                RemoteQPU to run the Job on a server.
-        """
-        self.qpu = qpu
-
-    @property
-    def nbqubits(self) -> int:
-        """Number of qubits defined in the register."""
-        return len(self.register.qubit_ids)
-
-    @property
-    def distances(self) -> np.ndarray:
-        r"""Distances between each qubits (in :math:`\mu m`)."""
-        positions = self.register._coords
-        return cast(np.ndarray, cdist(positions, positions, metric="euclidean"))
-
-    @staticmethod
-    def convert_pulser_samples(
-        pulser_samples: Counter | dict[str, int],
-    ) -> Result:
-        """Converts the output of a sampling into a myqlm Result.
-
-        Args:
-            pulser_samples: A dictionary of strings describing the measured states
-                and their respective counts.
-
-        Returns:
-            Result: A myqlm Result associating each state with
-                its frequency of occurence in pulser_samples.
-        """
-        n_samples = sum(pulser_samples.values())
-        # Associates to each measured state its frequency of occurence
-        myqlm_result = Result()
-        for state, counts in pulser_samples.items():
-            myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
-        return myqlm_result
-
-    def submit_job(self, job: Job) -> None:
-        """Should be implemented for each qpu."""
-        raise NotImplementedError(
-            "Submit job only implemented for hardware-specific qpus, not PulserAQPU."
-        )
-
-
-class IsingAQPU(PulserAQPU):
+class IsingAQPU(QPUHandler):
     r"""Ising Analog Quantum Processing Unit.
 
     Device and register should respect a certain set of rules:
@@ -113,11 +37,18 @@ class IsingAQPU(PulserAQPU):
             RemoteQPU to run the job on a server.
     """
 
+    device: BaseDevice
+    register: BaseRegister
+    qpu: CommonQPU | None
+
     def __init__(
         self, device: BaseDevice, register: BaseRegister, qpu: CommonQPU | None = None
     ) -> None:
-        super().__init__(device=device, register=register, qpu=qpu)
+        super().__init__()
+        self.device = device
         self.check_channels_device(self.device)
+        self.register = register
+        self.set_qpu(qpu)
 
     @classmethod
     def from_sequence(cls, seq: Sequence, qpu: CommonQPU | None = None) -> IsingAQPU:
@@ -140,6 +71,27 @@ class IsingAQPU(PulserAQPU):
                 a Rydberg channel with Global addressing.
                 """
             )
+
+    def set_qpu(self, qpu: CommonQPU | None = None) -> None:
+        """Set the QPU to use to simulate jobs.
+
+        Args:
+            qpu: If None, pulser-simulation is used to simulate the Sequence
+                associated to the Job. Otherwise, it can be a QPU running locally or a
+                RemoteQPU to run the Job on a server.
+        """
+        self.qpu = qpu
+
+    @property
+    def nbqubits(self) -> int:
+        """Number of qubits defined in the register."""
+        return len(self.register.qubit_ids)
+
+    @property
+    def distances(self) -> np.ndarray:
+        r"""Distances between each qubits (in :math:`\mu m`)."""
+        positions = np.array(list(self.register.qubits.values()))
+        return cast(np.ndarray, cdist(positions, positions, metric="euclidean"))
 
     @cached_property
     def c6_interactions(self) -> np.ndarray:
@@ -306,6 +258,25 @@ class IsingAQPU(PulserAQPU):
         schedule = cls.convert_sequence_to_schedule(seq, modulation)
         return schedule.to_job(nbshots=nbshots)
 
+    @staticmethod
+    def convert_pulser_samples(pulser_samples: Counter | dict[str, int]) -> Result:
+        """Converts the output of a sampling into a myqlm Result.
+
+        Args:
+            pulser_samples: A dictionary of strings describing the measured states
+                and their respective counts.
+
+        Returns:
+            Result: A myqlm Result associating each state with
+                its frequency of occurence in pulser_samples.
+        """
+        n_samples = sum(pulser_samples.values())
+        # Associates to each measured state its frequency of occurence
+        myqlm_result = Result()
+        for state, counts in pulser_samples.items():
+            myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
+        return myqlm_result
+
     def submit_job(self, job: Job, **kwargs) -> Result:  # type: ignore
         """Submit a MyQLM job to the QPU.
 
@@ -448,4 +419,4 @@ class FresnelQPU(QPUHandler):
         if pulser_json_result is None:
             return Result()
         pulser_result = json.loads(pulser_json_result)
-        return PulserAQPU.convert_pulser_samples(pulser_result)
+        return IsingAQPU.convert_pulser_samples(pulser_result)

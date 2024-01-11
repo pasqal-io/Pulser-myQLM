@@ -3,12 +3,7 @@ from pulser.devices import MockDevice
 from pulser.register import Register
 from qat.core.variables import Variable
 
-from pulser_myqlm import IsingAQPU, PulserAQPU
-
-
-@pytest.fixture
-def test_pulser_qpu() -> PulserAQPU:
-    return PulserAQPU(MockDevice, Register.square(2, 4, None))
+from pulser_myqlm import IsingAQPU
 
 
 @pytest.fixture
