@@ -10,7 +10,7 @@ from qat.core import Sample, Schedule
 from qat.core.variables import ArithExpression, Symbol, cos, sin
 from qat.qpus import PyLinalg
 
-from pulser_myqlm import IsingAQPU, FresnelQPU
+from pulser_myqlm import FresnelQPU, IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules
 
 
@@ -426,11 +426,15 @@ def test_run_sequence(test_ising_qpu):
     with pytest.raises(TypeError, match="'NoneType' object is not"):
         aqpu.submit_job(job)
 
+
 def test_FresnelQPU(test_ising_qpu):
-    base_uri="https://gitlab.pasqal.com/pcs/pasqman/-/blob/main/mango/configuration/devices/preprod.yaml?ref_type=heads#L5"
+    base_uri = (
+        "https://gitlab.pasqal.com/pcs/pasqman/-/blob/main/mango/"
+        + "configuration/devices/preprod.yaml?ref_type=heads#L5"
+    )
     qpu = FresnelQPU(base_uri=base_uri)
     seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
     seq.declare_channel("ryd_glob", "rydberg_global")
     seq.add(Pulse.ConstantPulse(100, 1, 0, 0), "ryd_glob")
     aqpu = IsingAQPU.from_sequence(seq, qpu=qpu)
-    result = aqpu.submit_job(aqpu.convert_sequence_to_job(seq))
+    aqpu.submit_job(aqpu.convert_sequence_to_job(seq))
