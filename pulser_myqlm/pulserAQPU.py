@@ -341,7 +341,7 @@ class FresnelQPU(QPUHandler):
         max_nbshots: int = 2000,
         cancel_previous_job: bool = False,
     ):
-        super.__init__(self)
+        super().__init__()
         self.max_nbshots = max_nbshots
         self.cancel_previous_job = cancel_previous_job
         self.base_uri = base_uri + "/" + version
