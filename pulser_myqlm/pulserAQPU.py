@@ -21,6 +21,8 @@ from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
 from scipy.spatial.distance import cdist
 
+from pulser_myqlm.devices import FresnelDevice
+
 
 class IsingAQPU(QPUHandler):
     r"""Ising Analog Quantum Processing Unit.
@@ -339,43 +341,61 @@ class FresnelQPU(QPUHandler):
         base_uri: str,
         version: str = "latest",
         max_nbshots: int = 2000,
-        cancel_previous_job: bool = False,
     ):
         super().__init__()
         self.max_nbshots = max_nbshots
-        self.cancel_previous_job = cancel_previous_job
         self.base_uri = base_uri + "/" + version
-        self.update_system()
-        self.print_system()
-        self.check_system()
+        self.device: BaseDevice = FresnelDevice
+        self.is_operational  # Check that base_uri is correct
 
-    def update_system(self) -> None:
-        """Get the current state of the system."""
-        self.system = requests.get(url=self.base_uri + "/system").json()
-
-    def print_system(self) -> None:
-        """Print system's name and id, as well as its mode, status and time to idle."""
-        print("Using QPU: ", self.system["model_name"])
-        print("With ID: ", self.system["serial_number"])
-        print("QPU mode: ", self.system["mode"])
-        print("QPU status: ", self.system["status"])
-        print("Time to idle: ", self.system["time_to_idle"])
+    @property
+    def is_operational(self) -> bool:
+        """Returns whether or not the system is operational."""
+        response = requests.get(url=self.base_uri + "/system/operational")
+        if response.status_code != 200:
+            raise ValueError(
+                "Connection with API failed, make sure the address "
+                f"{self.base_uri} is correct."
+            )
+        return cast(str, response.json()["data"]["operational_status"]) == "UP"
 
     def check_system(self) -> None:
         """Check that the system is operational."""
-        if self.system["mode"] != "MODE_OPERATION":
+        if not self.is_operational:
             raise OSError(
                 "QPU not operational, please run calibration and validation of the "
                 "devices prior to creating the FresnelQPU"
             )
-        if self.system["status"] == "FAILURE":
-            raise OSError(
-                "The QPU has failed its last job and can't recover. Operator "
-                "intervention is required."
-            )
 
-    def submit_job(self, job: Job, cancel_previous_job: bool | None = None) -> Result:
-        """Submit a MyQLM job encapsulating a Pulser Sequence to the QPU."""
+    def serve(
+        self, port: int, host_ip: str = "localhost", server_type: str | None = None
+    ) -> None:
+        """Runs the QPU inside a server.
+
+        The QPU can only be run if it is operational.
+
+        Args:
+            port: The port on which to listen
+            host_ip: The url on which to publish the API. Optional. Defaults to
+                "localhost".
+            server_type: Type of server. The different types of server are:
+                "simple": single-thread server, accepts one connection at a time
+                    (default server type)
+                "threaded": multi-thread server, each connection starts a new thread
+                "pool": multi-thread server, each connection runs in a thread, with
+                    a maximum of 10 running threads
+                "fork": multi-process server, each connection runs in a new process
+        """
+        # self.check_system()
+        super().serve(port, host_ip, server_type)
+
+    def submit_job(self, job: Job) -> Result:
+        """Submit a MyQLM job encapsulating a Pulser Sequence to the QPU.
+
+        Args:
+            job: The MyQLM Job to run. Must have an abstract Pulser Sequence under the
+                key 'abstr_seq' of the dictionary Job.schedule._other.
+        """
         if (
             job.schedule._other is None
             or not isinstance(job.schedule._other, dict)
@@ -386,36 +406,41 @@ class FresnelQPU(QPUHandler):
                 " 'abstr_seq' key of the dictionary in Job.schedule._other."
             )
         # Check that the system is operational
-        self.update_system()
-        self.print_system()
         self.check_system()
 
         # Submit a job to the API
-        api_job = {
+        payload = {
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
-            "pulser": job.schedule._other["abstr_seq"],
-            "cancel_previous_job": self.cancel_previous_job
-            if cancel_previous_job is not None
-            else cancel_previous_job,
+            "pulser_sequence": job.schedule._other["abstr_seq"],
         }
-        api_job_return = requests.post(self.base_uri + "/job", json=api_job).json()
+        response = requests.post(self.base_uri + "/jobs", json=payload)
+        if response.status_code != 200:
+            raise Exception("Could not create job", response.text)
+        job_response = response.json()["data"]
+        print(f"Job #{job_response['uid']} created, status: {job_response['status']}")
 
-        # Wait for the job to be over
-        while api_job_return["status"] not in ["ERROR", "DONE"]:
-            assert api_job_return["status"] in ["PENDING", "RUNNING"]
-            api_job_return = requests.get(
-                self.base_uri + f"/jobs/{api_job_return['uid']}"
-            ).json()
+        # Wait for the job to finish before querying results
+        while response.status_code == 200 and job_response["status"] not in [
+            "ERROR",
+            "DONE",
+        ]:
+            assert job_response["status"] in ["PENDING", "RUNNING"]
             time.sleep(10)
+            response = requests.get(self.base_uri + f"/jobs/{job_response['uid']}")
+            if response.status_code != 200:
+                print("Error while getting job status, exiting loop", response.text)
+                continue
+            job_response = response.json()["data"]
 
         # Check that the job submission went well
-        if api_job_return["status"] == "ERROR":
+        if job_response["status"] == "ERROR":
             raise RuntimeError(
                 "An error occured, check locally the Sequence before submitting or "
                 "contact the support."
             )
+        assert job_response["status"] == "DONE"
         # Convert the output of the API into a MyQLM Result
-        pulser_json_result = api_job_return["result"]
+        pulser_json_result = job_response["result"]
         if pulser_json_result is None:
             return Result()
         pulser_result = json.loads(pulser_json_result)
