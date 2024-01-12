@@ -321,19 +321,14 @@ class IsingAQPU(QPUHandler):
 class FresnelQPU(QPUHandler):
     r"""Fresnel Quantum Processing Unit.
 
-    Connects to the API of the machine via a base_uri. Tests that the machine is
-    operational to launch jobs on it. By default, jobs are added in a queue. If you'd
-    rather want new jobs to replace old ones, you should define it in its
-    `cancel_previous_job` attribute. To deploy this QPU on a server, use its `serve`
-    method. Any client can then access this QPU remotly using a `RemoteQPU` with
-    correct port and IP.
+    Connects to the API of the Fresnel QPU via a base_uri to send jobs to it.
+    To deploy this QPU on a server, use its `serve` method. Any client can then
+    access this QPU remotly using a `RemoteQPU` with correct port and IP.
 
     Args:
         base_uri: A string of shape 'https://myserver.com/api'.
         version: The version of the API to use, added at the end of the base URI.
         max_nbshots: The maximum number of shots per job. Default to 2000.
-        cancel_previous_job: Whether or not new jobs should cancel old jobs or not.
-            Default to False.
     """
 
     def __init__(
