@@ -24,6 +24,32 @@ from scipy.spatial.distance import cdist
 from pulser_myqlm.devices import FresnelDevice
 
 
+def deserialize_other(other_bytestr: bytes | bytearray | None) -> dict:
+    """Deserialize MyQLM Job.schedule._other.
+
+    Job.schedule._other must contain a string in bytes containing a dict serialized with
+    json.dumps. The dict must contain at least one key: "abstr_seq". The value
+    associated with that key must be a serialized Pulser Sequence.
+
+    Arg:
+        other_bytestr: The content of Job.schedule._other, a string encoded in utf-8.
+
+    Returns:
+        A dictionary having at least the key "abstr_seq".
+    """
+    try:  # duck typing, work with bytes and bytearray
+        other_str = other_bytestr.decode()
+    except (UnicodeDecodeError, AttributeError):
+        raise ValueError("job.schedule._other must be a string encoded in bytes.")
+    other_dict = json.loads(other_str)
+    if not isinstance(other_dict, dict) and "abstr_key" not in other_dict:
+        raise ValueError(
+            "An abstract representation of the Sequence must be associated with the"
+            " 'abstr_seq' key of the dictionary serialized in job.schedule._other."
+        )
+    return other_dict
+
+
 class IsingAQPU(QPUHandler):
     r"""Ising Analog Quantum Processing Unit.
 
@@ -229,7 +255,9 @@ class IsingAQPU(QPUHandler):
         )
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", "Register serialization", UserWarning)
-            sch._other = {"abstr_seq": seq.to_abstract_repr(), "modulation": modulation}
+            sch._other = json.dumps(
+                {"abstr_seq": seq.to_abstract_repr(), "modulation": modulation}
+            ).encode("utf-8")
         return sch
 
     @classmethod
@@ -284,9 +312,9 @@ class IsingAQPU(QPUHandler):
 
         If no QPU has been provided, simulation of the Pulser Sequence associated with
         the MyQLM Job is performed using pulser_simulation. Default number of shots is
-        2000. Pulser Sequence should be provided inside a dict in job.schedule._other,
-        under the key "abstr_seq". Whether to simulate using modulated samples of the
-        Sequence is defined by the value associated to "modulation" in this dictionary.
+        2000. Pulser Sequence should be provided in job.schedule._other. This attribute
+        must be a string in bytes containing a dict serialized with json.dumps. The dict
+        must contain at least one key: "abstr_seq".
 
         Args:
             job: the MyQLM Job to run.
@@ -296,21 +324,13 @@ class IsingAQPU(QPUHandler):
         """
         if self.qpu is not None:
             return self.qpu.submit_job(job, **kwargs)
-        if (
-            job.schedule._other is None
-            or not isinstance(job.schedule._other, dict)
-            or "abstr_seq" not in job.schedule._other
-        ):
-            raise ValueError(
-                "An abstract representation of the Sequence must be associated with the"
-                " 'abstr_seq' key of the dictionary in Job.schedule._other."
-            )
-        seq = Sequence.from_abstract_repr(job.schedule._other["abstr_seq"])
+        other_dict = deserialize_other(job.schedule._other)
+        seq = Sequence.from_abstract_repr(other_dict["abstr_seq"])
         emulator = QutipEmulator.from_sequence(
             seq,
             with_modulation=False
-            if "modulation" not in job.schedule._other
-            else job.schedule._other["modulation"],
+            if "modulation" not in other_dict
+            else other_dict["modulation"],
         )
         pulser_samples = emulator.run().sample_final_state(
             2000 if not job.nbshots else job.nbshots
@@ -389,24 +409,16 @@ class FresnelQPU(QPUHandler):
 
         Args:
             job: The MyQLM Job to run. Must have an abstract Pulser Sequence under the
-                key 'abstr_seq' of the dictionary Job.schedule._other.
+                key 'abstr_seq' of the dictionary serialized in Job.schedule._other.
         """
-        if (
-            job.schedule._other is None
-            or not isinstance(job.schedule._other, dict)
-            or "abstr_seq" not in job.schedule._other
-        ):
-            raise ValueError(
-                "An abstract representation of the Sequence must be associated with the"
-                " 'abstr_seq' key of the dictionary in Job.schedule._other."
-            )
+        other_dict = deserialize_other(job.schedule._other)
         # Check that the system is operational
         self.check_system()
 
         # Submit a job to the API
         payload = {
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
-            "pulser_sequence": job.schedule._other["abstr_seq"],
+            "pulser_sequence": other_dict["abstr_seq"],
         }
         response = requests.post(self.base_uri + "/jobs", json=payload)
         if response.status_code != 200:
