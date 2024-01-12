@@ -381,7 +381,7 @@ class FresnelQPU(QPUHandler):
                     a maximum of 10 running threads
                 "fork": multi-process server, each connection runs in a new process
         """
-        # self.check_system()
+        self.check_system()
         super().serve(port, host_ip, server_type)
 
     def submit_job(self, job: Job) -> Result:
