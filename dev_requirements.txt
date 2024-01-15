@@ -4,6 +4,7 @@ flake8-docstrings
 black[jupyter]
 isort
 mypy == 0.991
+types-requests
 
 # tutorials
 notebook
