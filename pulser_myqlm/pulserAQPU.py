@@ -24,7 +24,7 @@ from scipy.spatial.distance import cdist
 from pulser_myqlm.devices import FresnelDevice
 
 
-def deserialize_other(other_bytestr: bytes | bytearray | None) -> dict:
+def deserialize_other(other_bytestr: bytes | None) -> dict:
     """Deserialize MyQLM Job.schedule._other.
 
     Job.schedule._other must contain a string in bytes containing a dict serialized with
@@ -37,16 +37,23 @@ def deserialize_other(other_bytestr: bytes | bytearray | None) -> dict:
     Returns:
         A dictionary having at least the key "abstr_seq".
     """
-    try:  # duck typing, work with bytes and bytearray
-        other_str = other_bytestr.decode()
-    except (UnicodeDecodeError, AttributeError):
+    if not isinstance(other_bytestr, bytes):
         raise ValueError("job.schedule._other must be a string encoded in bytes.")
-    other_dict = json.loads(other_str)
-    if not isinstance(other_dict, dict) and "abstr_key" not in other_dict:
+    other_dict = json.loads(other_bytestr.decode())
+    if not (isinstance(other_dict, dict) and "abstr_seq" in other_dict):
         raise ValueError(
             "An abstract representation of the Sequence must be associated with the"
             " 'abstr_seq' key of the dictionary serialized in job.schedule._other."
         )
+    # Validate that value associated to abstr_seq is a serialized Sequence
+    try:
+        seq = Sequence.from_abstract_repr(other_dict["abstr_seq"])
+    except Exception as e:
+        raise ValueError(
+            "Failed to deserialize the value associated to 'abstr_seq' in "
+            f"job.schedule._other as a Pulser Sequence. Following error occured: {e}"
+        )
+    other_dict["seq"] = seq
     return other_dict
 
 
@@ -289,8 +296,8 @@ class IsingAQPU(QPUHandler):
         return schedule.to_job(nbshots=nbshots)
 
     @staticmethod
-    def convert_pulser_samples(pulser_samples: Counter | dict[str, int]) -> Result:
-        """Converts the output of a sampling into a myqlm Result.
+    def convert_samples_to_result(pulser_samples: Counter | dict[str, int]) -> Result:
+        """Converts the output of a sampling into a MyQLM Result.
 
         Args:
             pulser_samples: A dictionary of strings describing the measured states
@@ -300,12 +307,70 @@ class IsingAQPU(QPUHandler):
             Result: A myqlm Result associating each state with
                 its frequency of occurence in pulser_samples.
         """
-        n_samples = sum(pulser_samples.values())
+        n_samples = int(sum(pulser_samples.values()))
         # Associates to each measured state its frequency of occurence
-        myqlm_result = Result()
+        meta_data = {
+            "n_samples": n_samples,
+            "n_qubits": len(list(pulser_samples.keys())[0]) if pulser_samples else None,
+        }
+        myqlm_result = Result(meta_data=meta_data)
         for state, counts in pulser_samples.items():
             myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
         return myqlm_result
+
+    @staticmethod
+    def convert_result_to_samples(myqlm_result: Result) -> Counter:
+        """Converts a MyQLM Result into the output of a sampling.
+
+        To convert a MyQLM Result into the output of a sampling, the number of samples
+        performed and the number of qubits need to be precised in the meta_data under
+        the keys "n_samples" and "n_qubits" respectively.
+
+        Args:
+            myqlm_result: A Result instance having information about the measurement
+                outcome in raw_data and about the number of samples in meta_data.
+
+        Returns:
+            A dictionary of strings describing the measured states
+                and their respective counts.
+        """
+        # Associates to each measured state its frequency of occurence
+        samples: dict[str, int] = {}
+        if not myqlm_result.raw_data:
+            return Counter(samples)
+        if not (
+            isinstance(myqlm_result.meta_data, dict)
+            and "n_samples" in myqlm_result.meta_data
+            and "n_qubits" in myqlm_result.meta_data
+        ):
+            raise ValueError(
+                "Meta data must be a dictionary with n_samples and n_qubits defined."
+            )
+        if not isinstance(myqlm_result.meta_data["n_qubits"], int):
+            raise ValueError("n_qubits must be an integer.")
+        if not (
+            isinstance(myqlm_result.meta_data["n_samples"], int)
+            and myqlm_result.meta_data["n_samples"] > 0
+        ):
+            raise ValueError("n_samples must be an integer strictly greater than 0.")
+
+        for sample in myqlm_result.raw_data:
+            if len(sample.state.bitstring) > myqlm_result.meta_data["n_qubits"]:
+                raise ValueError(
+                    f"State {sample.state.int} is incompatible with number of qubits"
+                    f" declared {myqlm_result.meta_data['n_qubits']}."
+                )
+            counts = sample.probability * myqlm_result.meta_data["n_samples"]
+            if not np.isclose(counts % 1, 0, rtol=1e-5):
+                raise ValueError(
+                    f"Probability associated with state {sample.state.int} does not "
+                    "make an integer count for n_samples: "
+                    f"{myqlm_result.meta_data['n_samples']}."
+                )
+            samples[
+                sample.state.bitstring.zfill(myqlm_result.meta_data["n_qubits"])
+            ] = int(counts)
+        return Counter(samples)
 
     def submit_job(self, job: Job, **kwargs) -> Result:  # type: ignore
         """Submit a MyQLM job to the QPU.
@@ -325,9 +390,8 @@ class IsingAQPU(QPUHandler):
         if self.qpu is not None:
             return self.qpu.submit_job(job, **kwargs)
         other_dict = deserialize_other(job.schedule._other)
-        seq = Sequence.from_abstract_repr(other_dict["abstr_seq"])
         emulator = QutipEmulator.from_sequence(
-            seq,
+            other_dict["seq"],
             with_modulation=False
             if "modulation" not in other_dict
             else other_dict["modulation"],
@@ -335,7 +399,7 @@ class IsingAQPU(QPUHandler):
         pulser_samples = emulator.run().sample_final_state(
             2000 if not job.nbshots else job.nbshots
         )
-        return self.convert_pulser_samples(pulser_samples)
+        return self.convert_samples_to_result(pulser_samples)
 
 
 class FresnelQPU(QPUHandler):
@@ -409,16 +473,33 @@ class FresnelQPU(QPUHandler):
 
         Args:
             job: The MyQLM Job to run. Must have an abstract Pulser Sequence under the
-                key 'abstr_seq' of the dictionary serialized in Job.schedule._other.
+                key 'abstr_seq' of the dictionary serialized in Job.schedule._other. The
+                Sequence must be compatible with FresnelDevice.
         """
         other_dict = deserialize_other(job.schedule._other)
+        seq = other_dict["seq"]
+        # Validate that Sequence is compatible with FresnelDevice
+        try:
+            if seq.device != FresnelDevice:
+                seq = seq.switch_device(FresnelDevice, strict=True)
+        except Exception as e:
+            raise ValueError(
+                "The Sequence in job.schedule._other['abstr_seq'] is not compatible "
+                f"with FresnelDevice. Following error occured: {e}"
+            )
+        if not FresnelDevice.register_is_from_calibrated_layout(seq.register):
+            raise ValueError(
+                "The Register of the Sequence in job.schedule._other['abstr_seq'] must "
+                "be defined from a layout in the calibrated layouts of FresnelDevice."
+            )
+
         # Check that the system is operational
         self.check_system()
 
         # Submit a job to the API
         payload = {
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
-            "pulser_sequence": other_dict["abstr_seq"],
+            "pulser_sequence": seq,
         }
         response = requests.post(self.base_uri + "/jobs", json=payload)
         if response.status_code != 200:
@@ -432,7 +513,7 @@ class FresnelQPU(QPUHandler):
             "DONE",
         ]:
             assert job_response["status"] in ["PENDING", "RUNNING"]
-            time.sleep(10)
+            time.sleep(1)
             response = requests.get(self.base_uri + f"/jobs/{job_response['uid']}")
             if response.status_code != 200:
                 print("Error while getting job status, exiting loop", response.text)
@@ -447,8 +528,4 @@ class FresnelQPU(QPUHandler):
             )
         assert job_response["status"] == "DONE"
         # Convert the output of the API into a MyQLM Result
-        pulser_json_result = job_response["result"]
-        if pulser_json_result is None:
-            return Result()
-        pulser_result = json.loads(pulser_json_result)
-        return IsingAQPU.convert_pulser_samples(pulser_result)
+        return IsingAQPU.convert_samples_to_result(job_response["result"]["counter"])

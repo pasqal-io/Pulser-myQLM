@@ -1,3 +1,7 @@
+import json
+from collections import Counter
+from threading import Thread
+
 import numpy as np
 import pytest
 from pulser import Pulse, Sequence
@@ -6,11 +10,11 @@ from pulser.devices import VirtualDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
-from qat.core import Sample, Schedule
+from qat.core import Result, Sample, Schedule
 from qat.core.variables import ArithExpression, Symbol, cos, sin
 from qat.qpus import PyLinalg
 
-from pulser_myqlm import FresnelQPU, IsingAQPU
+from pulser_myqlm import FresnelDevice, FresnelQPU, IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules
 
 
@@ -289,7 +293,8 @@ def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
         IsingAQPU.convert_sequence_to_schedule(seq)
 
 
-def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
+@pytest.fixture
+def schedule_seq(test_ising_qpu, omega_t, delta_t) -> tuple[Schedule, Sequence]:
     t0 = 16  # in ns
     H0 = test_ising_qpu.hamiltonian(omega_t, delta_t, 0)
     t1 = 20  # in ns
@@ -318,13 +323,49 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
     )
     seq.add(Pulse.ConstantPulse(t1, 1, 0, 0), "ryd_glob")
     seq.add(Pulse.ConstantPulse(t2, 1, 0, np.pi / 2), "ryd_glob")
+    return (schedule, seq)
+
+
+def test_convert_sequence_to_schedule(schedule_seq):
+    schedule, seq = schedule_seq
+    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq)
+    assert isinstance(schedule_from_seq, Schedule)
+    assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
+
+
+@pytest.mark.parametrize(
+    "meta_data, err_mess",
+    [
+        ({}, "Meta data must be a dictionary."),
+        ({"n_qubits": None, "n_samples": 0}, "n_qubits must be an integer."),
+        (
+            {"n_qubits": 1, "n_samples": 0},
+            "n_samples must be an integer strictly greater than 0.",
+        ),
+        (
+            {"n_qubits": 1, "n_samples": 1000},
+            "State 2 is incompatible with number of qubits declared 1",
+        ),
+        (
+            {"n_qubits": 4, "n_samples": 999},
+            "Probability associated with state 0 does not",
+        ),
+    ],
+)
+def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_ising_qpu):
+    np.random.seed(123)
+    _, seq = schedule_seq
     sim_result = QutipEmulator.from_sequence(seq, sampling_rate=0.1).run()
     n_samples = 1000
     sim_samples = sim_result.sample_final_state(n_samples)
     sim_samples_dict = {k: v for k, v in sim_samples.items()}
     # Testing the conversion of the pulser samples in a myqlm result
-    myqlm_result = test_ising_qpu.convert_pulser_samples(sim_samples)
-    myqlm_result_from_dict = test_ising_qpu.convert_pulser_samples(sim_samples_dict)
+    myqlm_result = test_ising_qpu.convert_samples_to_result(sim_samples)
+    myqlm_result_from_dict = test_ising_qpu.convert_samples_to_result(sim_samples_dict)
+    assert (
+        myqlm_result.meta_data["n_samples"] == n_samples
+        and myqlm_result.meta_data["n_qubits"] == test_ising_qpu.nbqubits
+    )
 
     myqlm_samples = {
         sample.state.int: sample.probability for sample in myqlm_result.raw_data
@@ -338,9 +379,18 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
         == myqlm_samples
         == myqlm_samples_from_dict
     )
-    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq)
-    assert isinstance(schedule_from_seq, Schedule)
-    assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
+    # Testing the conversion of a myqlm Result into pulser samples
+    # for an empty Result:
+    assert test_ising_qpu.convert_result_to_samples(Result()) == Counter()
+    # for the sequence above:
+    assert test_ising_qpu.convert_result_to_samples(myqlm_result) == sim_samples
+    assert (
+        test_ising_qpu.convert_result_to_samples(myqlm_result_from_dict) == sim_samples
+    )
+    # for incorrect meta-data
+    myqlm_result.meta_data = meta_data
+    with pytest.raises(ValueError, match=err_mess):
+        test_ising_qpu.convert_result_to_samples(myqlm_result)
 
 
 @pytest.mark.parametrize("modulation", [False, True])
@@ -365,76 +415,98 @@ def test_convert_sequence_to_job(test_ising_qpu, modulation):
     assert are_equivalent_schedules(schedule_from_seq, job_from_seq.schedule)
     assert job_from_seq.nbshots == 0
     assert schedule_from_seq.to_job().nbshots is None
-    assert (
-        job_from_seq.schedule._other["abstr_seq"]
-        == schedule_from_seq._other["abstr_seq"]
-    )
-    assert job_from_seq.schedule._other["modulation"] == modulation
+    assert job_from_seq.schedule._other == schedule_from_seq._other
 
 
-def test_run_sequence(test_ising_qpu):
+@pytest.mark.parametrize(
+    "other_value, err_mess",
+    [
+        (None, "job.schedule._other must be a string encoded in bytes."),
+        (
+            json.dumps({"modulation": True}).encode("utf-8"),
+            "An abstract representation of the Sequence",
+        ),
+        (
+            json.dumps({"abstr_seq": "0", "modulation": True}).encode("utf-8"),
+            "Failed to deserialize the value",
+        ),
+    ],
+)
+def test_job_submission_local(schedule_seq, other_value, err_mess):
+    schedule, seq = schedule_seq
+    aqpu = IsingAQPU.from_sequence(seq)
+    job = schedule.to_job()
+    job.schedule._other = other_value
+    with pytest.raises(ValueError, match=err_mess):
+        aqpu.submit_job(job)
+
+
+def test_run_sequence(schedule_seq):
     np.random.seed(123)
-    seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
-    seq.declare_channel("ryd_glob", "rydberg_global")
-    seq.add(Pulse.ConstantPulse(100, 1, 0, 0), "ryd_glob")
+    schedule, seq = schedule_seq
     aqpu = IsingAQPU.from_sequence(seq)
     # Run job created from a sequence
     job_from_seq = aqpu.convert_sequence_to_job(seq, nbshots=1000)
     assert job_from_seq.nbshots == 1000
     result = aqpu.submit_job(job_from_seq)
     assert result.raw_data == [
-        Sample(
-            probability=0.989,
-            state=0,
-        ),
-        Sample(
-            probability=0.002,
-            state=1,
-        ),
-        Sample(probability=0.002, state=2),
-        Sample(probability=0.004, state=4),
-        Sample(probability=0.003, state=8),
+        Sample(probability=0.974, state=0),
+        Sample(probability=0.005, state=1),
+        Sample(probability=0.005, state=2),
+        Sample(probability=0.009, state=4),
+        Sample(probability=0.001, state=6),
+        Sample(probability=0.006, state=8),
     ]
-    # Run job created from a schedule
-    # Can't simulate with pulser_simulation if no information about
-    # the Sequence can be found in the job
-    t1 = 20  # in ns
-    H1 = test_ising_qpu.hamiltonian(1, 0, 0)
-    schedule = Schedule(drive=[(1, H1)], tmax=t1)
-    job = schedule.to_job()
-    with pytest.raises(ValueError, match="An abstract representation of the Sequence"):
-        aqpu.submit_job(job)
-    job.schedule._other = seq
-    with pytest.raises(ValueError, match="An abstract representation of the Sequence"):
-        aqpu.submit_job(job)
-    job.schedule._other = {"abst_rep": 0}
     # Use IsingAQPU converter to have information about the sequence in the job
     schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
     job_from_seq = schedule_from_seq.to_job()  # max nb shots
     assert not job_from_seq.nbshots
     result_schedule = aqpu.submit_job(job_from_seq)
-    print(result_schedule.raw_data)
     assert result_schedule.raw_data == [
-        Sample(probability=0.991, state=0),
-        Sample(probability=0.002, state=1),
-        Sample(probability=0.003, state=2),
-        Sample(probability=0.001, state=4),
-        Sample(probability=0.003, state=8),
+        Sample(probability=0.973, state=0),
+        Sample(probability=0.0075, state=1),
+        Sample(probability=0.006, state=2),
+        Sample(probability=0.0065, state=4),
+        Sample(probability=0.007, state=8),
     ]
     # Can't simulate a time-dependent job with a PyLinalg AQPU
     aqpu.set_qpu(PyLinalg())
     with pytest.raises(TypeError, match="'NoneType' object is not"):
-        aqpu.submit_job(job)
+        aqpu.submit_job(schedule.to_job())
 
 
+@pytest.mark.xfail
 def test_FresnelQPU(test_ising_qpu):
+    with pytest.raises(ValueError, match="Connection with API failed"):
+        FresnelQPU(base_uri="")
+
     base_uri = (
         "https://gitlab.pasqal.com/pcs/pasqman/-/blob/main/mango/"
         + "configuration/devices/preprod.yaml?ref_type=heads#L5"
     )
-    qpu = FresnelQPU(base_uri=base_uri)
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+
+    # Deploy the QPU on a Qaptiva server
+    def deploy_qpu(qpu):
+        qpu.serve(1234, "localhost")
+
+    server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu,))
+    server_thread.start()
+    # RemoteQPU(1234, "localhost")
+    # Wrong device
     seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
     seq.declare_channel("ryd_glob", "rydberg_global")
     seq.add(Pulse.ConstantPulse(100, 1, 0, 0), "ryd_glob")
-    aqpu = IsingAQPU.from_sequence(seq, qpu=qpu)
-    aqpu.submit_job(aqpu.convert_sequence_to_job(seq))
+    aqpu = IsingAQPU.from_sequence(seq, qpu=fresnel_qpu)
+    with pytest.raises(
+        ValueError, match="The Sequence in job.schedule._other['abstr_seq']"
+    ):
+        aqpu.submit_job(aqpu.convert_sequence_to_job(seq))
+    # No layout in register
+    seq = Sequence(test_ising_qpu.register, FresnelDevice)
+    seq.declare_channel("ryd_glob", "rydberg_global")
+    seq.add(Pulse.ConstantPulse(100, 1, 0, 0), "ryd_glob")
+    with pytest.raises(
+        ValueError, match="The Sequence in job.schedule._other['abstr_seq']"
+    ):
+        fresnel_qpu.submit_job(aqpu.convert_sequence_to_job(seq))
