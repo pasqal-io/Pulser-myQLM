@@ -12,7 +12,7 @@ import numpy as np
 import requests
 from pulser import Sequence, sampler
 from pulser.channels import Rydberg
-from pulser.devices._device_datacls import BaseDevice
+from pulser.devices._device_datacls import COORD_PRECISION, BaseDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register.base_register import BaseRegister
 from pulser_simulation import QutipEmulator
@@ -126,7 +126,10 @@ class IsingAQPU(QPUHandler):
     def distances(self) -> np.ndarray:
         r"""Distances between each qubits (in :math:`\mu m`)."""
         positions = np.array(list(self.register.qubits.values()))
-        return cast(np.ndarray, cdist(positions, positions, metric="euclidean"))
+        return np.round(
+            cast(np.ndarray, cdist(positions, positions, metric="euclidean")),
+            COORD_PRECISION,
+        )
 
     @cached_property
     def c6_interactions(self) -> np.ndarray:

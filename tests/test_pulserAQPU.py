@@ -7,6 +7,7 @@ import pytest
 from pulser import Pulse, Sequence
 from pulser.channels import Raman, Rydberg
 from pulser.devices import VirtualDevice
+from pulser.devices._device_datacls import COORD_PRECISION
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
@@ -48,8 +49,8 @@ def test_distances(test_ising_qpu):
         [
             [0, 0, 0, 0],
             [4, 0, 0, 0],
-            [4, 4 * np.sqrt(2), 0, 0],
-            [4 * np.sqrt(2), 4, 4, 0],
+            [4, np.round(4 * np.sqrt(2), COORD_PRECISION), 0, 0],
+            [np.round(4 * np.sqrt(2), COORD_PRECISION), 4, 4, 0],
         ]
     )
     assert np.all(test_ising_qpu.distances == dist_tl + dist_tl.T)
@@ -89,7 +90,10 @@ def test_c6_interactions(test_ising_qpu):
         == np.zeros((1, test_ising_qpu.nbqubits))
     )
     int_edge = c6_dict[test_ising_qpu.device.rydberg_level] / 4**6
-    int_diag = c6_dict[test_ising_qpu.device.rydberg_level] / (4 * np.sqrt(2)) ** 6
+    int_diag = (
+        c6_dict[test_ising_qpu.device.rydberg_level]
+        / np.round(4 * np.sqrt(2), COORD_PRECISION) ** 6
+    )
     int_tl = np.array(
         [
             [0, 0, 0, 0],
