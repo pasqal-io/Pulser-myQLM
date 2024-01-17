@@ -502,7 +502,7 @@ class FresnelQPU(QPUHandler):
         # Submit a job to the API
         payload = {
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
-            "pulser_sequence": seq,
+            "pulser_sequence": seq.to_abstract_repr(),
         }
         response = requests.post(self.base_uri + "/jobs", json=payload)
         if response.status_code != 200:
@@ -522,7 +522,6 @@ class FresnelQPU(QPUHandler):
                 print("Error while getting job status, exiting loop", response.text)
                 continue
             job_response = response.json()["data"]
-
         # Check that the job submission went well
         if job_response["status"] == "ERROR":
             raise RuntimeError(
@@ -531,4 +530,6 @@ class FresnelQPU(QPUHandler):
             )
         assert job_response["status"] == "DONE"
         # Convert the output of the API into a MyQLM Result
-        return IsingAQPU.convert_samples_to_result(job_response["result"]["counter"])
+        return IsingAQPU.convert_samples_to_result(
+            json.loads(job_response["result"])["counter"]
+        )
