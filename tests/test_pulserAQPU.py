@@ -13,7 +13,7 @@ from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
 from qat.core import Result, Sample, Schedule
 from qat.core.variables import ArithExpression, Symbol, cos, sin
-from qat.qpus import PyLinalg
+from qat.qpus import PyLinalg, RemoteQPU
 
 from pulser_myqlm import FresnelDevice, FresnelQPU, IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules
@@ -473,6 +473,12 @@ def test_run_sequence(schedule_seq):
         Sample(probability=0.0065, state=4),
         Sample(probability=0.007, state=8),
     ]
+    # Can't simulate Job if Schedule is not equivalent to Sequence
+    job_from_seq.schedule = 2 * job_from_seq.schedule
+    with pytest.raises(
+        ValueError, match="The Sequence and the Schedule are not equivalent."
+    ):
+        aqpu.submit_job(job_from_seq)
     # Can't simulate a time-dependent job with a PyLinalg AQPU
     aqpu.set_qpu(PyLinalg())
     with pytest.raises(TypeError, match="'NoneType' object is not"):
@@ -496,7 +502,7 @@ def test_FresnelQPU(test_ising_qpu):
 
     server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu,))
     server_thread.start()
-    # RemoteQPU(1234, "localhost")
+    RemoteQPU(1234, "localhost")
     # Wrong device
     seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
     seq.declare_channel("ryd_glob", "rydberg_global")
@@ -514,3 +520,27 @@ def test_FresnelQPU(test_ising_qpu):
         ValueError, match="The Sequence in job.schedule._other['abstr_seq']"
     ):
         fresnel_qpu.submit_job(aqpu.convert_sequence_to_job(seq))
+    # Simulate Sequence using Pulser Simulation
+    seq = Sequence(
+        FresnelDevice.pre_calibrated_layouts[0].define_register(10, 12, 13),
+        FresnelDevice,
+    )
+    seq.declare_channel("ryd_glob", "rydberg_global")
+    seq.add(Pulse.ConstantPulse(100, 1, 0, 0), "ryd_glob")
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    np.random.seed(123)
+    result = fresnel_qpu.submit_job(job_from_seq)
+    assert result.raw_data == [
+        Sample(probability=0.974, state=0),
+        Sample(probability=0.005, state=1),
+        Sample(probability=0.005, state=2),
+        Sample(probability=0.009, state=4),
+        Sample(probability=0.001, state=6),
+        Sample(probability=0.006, state=8),
+    ]
+    # Can't simulate Job if Schedule is not equivalent to Sequence
+    job_from_seq.schedule = job_from_seq.schedule | job_from_seq.schedule
+    with pytest.raises(
+        ValueError, match="The Sequence and the Schedule are not equivalent."
+    ):
+        aqpu.submit_job(job_from_seq)
