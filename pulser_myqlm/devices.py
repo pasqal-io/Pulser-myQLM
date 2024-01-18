@@ -3,6 +3,8 @@ from typing import cast
 
 import pulser
 
+DEFAULT_NUMBER_OF_SHOTS = 2000
+
 FresnelDevice = cast(
     pulser.devices._device_datacls.Device,
     pulser.json.abstract_repr.deserializer.deserialize_device(
