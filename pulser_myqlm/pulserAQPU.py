@@ -301,7 +301,7 @@ class IsingAQPU(QPUHandler):
 
     @classmethod
     def _check_equivalence_sequence_schedule(
-        cls, seq: Sequence, schedule: Schedule
+        cls, seq: Sequence, schedule: Schedule, modulation: bool = False
     ) -> None:
         """Check that Sequence and Schedule describe the same hamiltonian.
 
@@ -311,8 +311,9 @@ class IsingAQPU(QPUHandler):
         Args:
             seq: A Pulser Sequence to compare.
             schedule: A MyQLM Schedule to compare.
+            modulation: If true, compares the modulated samples of the Sequence.
         """
-        schedule_from_seq = cls.convert_sequence_to_schedule(seq)
+        schedule_from_seq = cls.convert_sequence_to_schedule(seq, modulation=modulation)
         if not are_equivalent_schedules(schedule_from_seq, schedule):
             raise ValueError(
                 "The Sequence and the Schedule are not equivalent. Please use "
@@ -396,7 +397,7 @@ class IsingAQPU(QPUHandler):
             ] = int(counts)
         return Counter(samples)
 
-    def submit_job(self, job: Job, **kwargs) -> Result:  # type: ignore
+    def submit_job(self, job: Job) -> Result:
         """Submit a MyQLM job to the QPU.
 
         If no QPU has been provided, simulation of the Pulser Sequence associated with
@@ -409,19 +410,19 @@ class IsingAQPU(QPUHandler):
 
         Args:
             job: the MyQLM Job to run.
-
-        Kwargs:
-            Kwargs of the defined QPU.
         """
         if self.qpu is not None:
-            return self.qpu.submit_job(job, **kwargs)
+            return self.qpu.submit_job(job)
         other_dict = deserialize_other(job.schedule._other)
-        self._check_equivalence_sequence_schedule(other_dict["seq"], job.schedule)
+        modulation = (
+            False if "modulation" not in other_dict else other_dict["modulation"]
+        )
+        self._check_equivalence_sequence_schedule(
+            other_dict["seq"], job.schedule, modulation
+        )
         emulator = QutipEmulator.from_sequence(
             other_dict["seq"],
-            with_modulation=False
-            if "modulation" not in other_dict
-            else other_dict["modulation"],
+            with_modulation=modulation,
         )
         pulser_samples = emulator.run().sample_final_state(
             DEFAULT_NUMBER_OF_SHOTS if not job.nbshots else job.nbshots
@@ -437,7 +438,8 @@ class FresnelQPU(QPUHandler):
     access this QPU remotly using a `RemoteQPU` with correct port and IP.
 
     Args:
-        base_uri: A string of shape 'https://myserver.com/api'.
+        base_uri: A string of shape 'https://myserver.com/api'. If None,
+            pulser_simulation is used to simulate the Sequence.
         version: The version of the API to use, added at the end of the base URI.
         max_nbshots: The maximum number of shots per job. Default to
             `pulser_myqlm.devices.DEFAULT_NUMBER_OF_SHOTS`.
@@ -445,19 +447,21 @@ class FresnelQPU(QPUHandler):
 
     def __init__(
         self,
-        base_uri: str,
+        base_uri: str | None,
         version: str = "latest",
         max_nbshots: int = DEFAULT_NUMBER_OF_SHOTS,
     ):
         super().__init__()
         self.max_nbshots = max_nbshots
-        self.base_uri = base_uri + "/" + version
+        self.base_uri = None if base_uri is None else base_uri + "/" + version
         self.device: BaseDevice = FresnelDevice
         self.is_operational  # Check that base_uri is correct
 
     @property
     def is_operational(self) -> bool:
         """Returns whether or not the system is operational."""
+        if self.base_uri is None:
+            return True
         response = requests.get(url=self.base_uri + "/system/operational")
         if response.status_code != 200:
             raise ValueError(
@@ -521,7 +525,11 @@ class FresnelQPU(QPUHandler):
                 "The Register of the Sequence in job.schedule._other['abstr_seq'] must "
                 "be defined from a layout in the calibrated layouts of FresnelDevice."
             )
-        IsingAQPU._check_equivalence_sequence_schedule(seq, job.schedule)
+        IsingAQPU._check_equivalence_sequence_schedule(
+            seq,
+            job.schedule,
+            False if "modulation" not in other_dict else other_dict["modulation"],
+        )
         # Check that the system is operational
         self.check_system()
 
@@ -530,6 +538,9 @@ class FresnelQPU(QPUHandler):
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
             "pulser_sequence": seq.to_abstract_repr(),
         }
+        if self.base_uri is None:
+            aqpu = IsingAQPU.from_sequence(seq)
+            return aqpu.submit_job(aqpu.convert_sequence_to_job(seq))
         response = requests.post(self.base_uri + "/jobs", json=payload)
         if response.status_code != 200:
             raise Exception("Could not create job", response.text)
@@ -544,12 +555,9 @@ class FresnelQPU(QPUHandler):
             assert job_response["status"] in ["PENDING", "RUNNING"]
             time.sleep(1)
             response = requests.get(self.base_uri + f"/jobs/{job_response['uid']}")
-            if response.status_code != 200:
-                print("Error while getting job status, exiting loop", response.text)
-                continue
             job_response = response.json()["data"]
         # Check that the job submission went well
-        if job_response["status"] == "ERROR":
+        if response.status_code != 200 or job_response["status"] == "ERROR":
             raise RuntimeError(
                 "An error occured, check locally the Sequence before submitting or "
                 "contact the support."
