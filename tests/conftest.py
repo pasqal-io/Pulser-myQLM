@@ -1,14 +1,16 @@
 import pytest
-from pulser.devices import MockDevice
-from pulser.register import Register
 from qat.core.variables import Variable
 
 from pulser_myqlm import IsingAQPU
+from pulser_myqlm.devices import FresnelDevice
 
 
 @pytest.fixture
 def test_ising_qpu() -> IsingAQPU:
-    return IsingAQPU(MockDevice, Register.square(2, 4, None))
+    return IsingAQPU(
+        FresnelDevice,
+        FresnelDevice.pre_calibrated_layouts[0].define_register(26, 35, 30),
+    )
 
 
 @pytest.fixture
@@ -23,9 +25,9 @@ def u_variable():
 
 @pytest.fixture
 def omega_t(t_variable):
-    return t_variable + 1
+    return (t_variable + 1) / 100
 
 
 @pytest.fixture
 def delta_t(t_variable, u_variable):
-    return 1 - t_variable + u_variable  # in rad/us
+    return (1 - t_variable + u_variable) / 100  # in rad/us
