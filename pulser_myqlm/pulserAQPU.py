@@ -16,7 +16,7 @@ from pulser.devices._device_datacls import COORD_PRECISION, BaseDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register.base_register import BaseRegister
 from pulser_simulation import QutipEmulator
-from qat.core import Job, Observable, Result, Schedule, Term
+from qat.core import Batch, BatchResult, Job, Observable, Result, Schedule, Term
 from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
 from scipy.spatial.distance import cdist
@@ -56,6 +56,27 @@ def deserialize_other(other_bytestr: bytes | None) -> dict:
         )
     other_dict["seq"] = seq
     return other_dict
+
+
+def simulate_seq(seq: Sequence, modulation: bool, nbshots: int | None) -> Counter:
+    """Simulates a Sequence using pulser-simulation.
+
+    Args:
+        seq: A Pulser Sequence to simulate.
+        modulation: If True, uses modulated samples of the Sequence to perform
+            the simulation.
+        nbshots: The number of shots to perform.
+
+    Returns:
+        A Counter object, output of pulser-simulation.
+    """
+    emulator = QutipEmulator.from_sequence(
+        seq,
+        with_modulation=modulation,
+    )
+    return emulator.run().sample_final_state(
+        DEFAULT_NUMBER_OF_SHOTS if not nbshots else nbshots
+    )
 
 
 class IsingAQPU(QPUHandler):
@@ -334,10 +355,10 @@ class IsingAQPU(QPUHandler):
         """
         n_samples = int(sum(pulser_samples.values()))
         # Associates to each measured state its frequency of occurence
-        meta_data = {
-            "n_samples": n_samples,
-            "n_qubits": len(list(pulser_samples.keys())[0]) if pulser_samples else None,
-        }
+        meta_data = {"n_samples": str(n_samples)}
+        if pulser_samples:
+            meta_data["n_qubits"] = str(len(list(pulser_samples.keys())[0]))
+
         myqlm_result = Result(meta_data=meta_data)
         for state, counts in pulser_samples.items():
             myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
@@ -363,6 +384,7 @@ class IsingAQPU(QPUHandler):
         samples: dict[str, int] = {}
         if not myqlm_result.raw_data:
             return Counter(samples)
+        # raw_data is not empty so n_samples and n_qubits must be defined
         if not (
             isinstance(myqlm_result.meta_data, dict)
             and "n_samples" in myqlm_result.meta_data
@@ -371,31 +393,50 @@ class IsingAQPU(QPUHandler):
             raise ValueError(
                 "Meta data must be a dictionary with n_samples and n_qubits defined."
             )
-        if not isinstance(myqlm_result.meta_data["n_qubits"], int):
-            raise ValueError("n_qubits must be an integer.")
-        if not (
-            isinstance(myqlm_result.meta_data["n_samples"], int)
-            and myqlm_result.meta_data["n_samples"] > 0
-        ):
-            raise ValueError("n_samples must be an integer strictly greater than 0.")
+        try:
+            n_qubits = int(myqlm_result.meta_data["n_qubits"])
+        except (ValueError, TypeError):
+            raise ValueError("n_qubits must be castable to an integer.")
+        try:
+            n_samples = int(myqlm_result.meta_data["n_samples"])
+            if n_samples <= 0:
+                raise ValueError
+        except (ValueError, TypeError):
+            raise ValueError(
+                "n_samples must be castable to an integer strictly greater than 0."
+            )
 
         for sample in myqlm_result.raw_data:
-            if len(sample.state.bitstring) > myqlm_result.meta_data["n_qubits"]:
+            if len(sample.state.bitstring) > n_qubits:
                 raise ValueError(
                     f"State {sample.state.int} is incompatible with number of qubits"
-                    f" declared {myqlm_result.meta_data['n_qubits']}."
+                    f" declared {n_qubits}."
                 )
-            counts = sample.probability * myqlm_result.meta_data["n_samples"]
+            counts = sample.probability * n_samples
             if not np.isclose(counts % 1, 0, rtol=1e-5):
                 raise ValueError(
                     f"Probability associated with state {sample.state.int} does not "
-                    "make an integer count for n_samples: "
-                    f"{myqlm_result.meta_data['n_samples']}."
+                    f"make an integer count for n_samples: {n_samples}."
                 )
-            samples[
-                sample.state.bitstring.zfill(myqlm_result.meta_data["n_qubits"])
-            ] = int(counts)
+            samples[sample.state.bitstring.zfill(n_qubits)] = int(counts)
         return Counter(samples)
+
+    def submit(self, batch: Batch) -> BatchResult:
+        """Executes a batch of jobs and returns the corresponding list of Results.
+
+        If the qpu attribute is None, pulser_simulation is used to simulate the Pulser
+        Sequence associated with each MyQLM Job in the batch.
+
+        Args:
+            batch: a batch of jobs. If a single job is provided, the job is embedded
+                into a Batch, executed, and the first result is returned.
+
+        Returns:
+            a batch result
+        """
+        if self.qpu is None:
+            return super().submit(batch)
+        return self.qpu.submit(batch)
 
     def submit_job(self, job: Job) -> Result:
         """Submit a MyQLM job to the QPU.
@@ -409,10 +450,16 @@ class IsingAQPU(QPUHandler):
         Job.
 
         Args:
-            job: the MyQLM Job to run.
+            job: the MyQLM Job to execute.
+
+        Returns:
+            a result
         """
         if self.qpu is not None:
-            return self.qpu.submit_job(job)
+            raise ValueError(
+                "`submit_job` must not be used if the qpu attribute is defined,"
+                " use the `submit` method instead."
+            )
         other_dict = deserialize_other(job.schedule._other)
         modulation = (
             False if "modulation" not in other_dict else other_dict["modulation"]
@@ -420,14 +467,9 @@ class IsingAQPU(QPUHandler):
         self._check_equivalence_sequence_schedule(
             other_dict["seq"], job.schedule, modulation
         )
-        emulator = QutipEmulator.from_sequence(
-            other_dict["seq"],
-            with_modulation=modulation,
+        return self.convert_samples_to_result(
+            simulate_seq(other_dict["seq"], modulation, job.nbshots)
         )
-        pulser_samples = emulator.run().sample_final_state(
-            DEFAULT_NUMBER_OF_SHOTS if not job.nbshots else job.nbshots
-        )
-        return self.convert_samples_to_result(pulser_samples)
 
 
 class FresnelQPU(QPUHandler):
@@ -525,22 +567,25 @@ class FresnelQPU(QPUHandler):
                 "The Register of the Sequence in job.schedule._other['abstr_seq'] must "
                 "be defined from a layout in the calibrated layouts of FresnelDevice."
             )
+        modulation = (
+            False if "modulation" not in other_dict else other_dict["modulation"]
+        )
         IsingAQPU._check_equivalence_sequence_schedule(
             seq,
             job.schedule,
-            False if "modulation" not in other_dict else other_dict["modulation"],
+            modulation,
         )
         # Check that the system is operational
         self.check_system()
-
         # Submit a job to the API
         payload = {
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
             "pulser_sequence": seq.to_abstract_repr(),
         }
         if self.base_uri is None:
-            aqpu = IsingAQPU.from_sequence(seq)
-            return aqpu.submit_job(aqpu.convert_sequence_to_job(seq))
+            pulser_results = simulate_seq(seq, modulation, payload["nb_run"])
+            myqlm_result = IsingAQPU.convert_samples_to_result(pulser_results)
+            return myqlm_result
         response = requests.post(self.base_uri + "/jobs", json=payload)
         if response.status_code != 200:
             raise Exception("Could not create job", response.text)

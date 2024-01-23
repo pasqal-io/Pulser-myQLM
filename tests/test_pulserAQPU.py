@@ -337,10 +337,10 @@ def test_convert_sequence_to_schedule(schedule_seq):
     "meta_data, err_mess",
     [
         ({}, "Meta data must be a dictionary."),
-        ({"n_qubits": None, "n_samples": 0}, "n_qubits must be an integer."),
+        ({"n_qubits": None, "n_samples": 0}, "n_qubits must be castable."),
         (
             {"n_qubits": 1, "n_samples": 0},
-            "n_samples must be an integer strictly greater than 0.",
+            "n_samples must be castable to an integer strictly greater than 0.",
         ),
         (
             {"n_qubits": 1, "n_samples": 1000},
@@ -362,10 +362,9 @@ def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_isin
     # Testing the conversion of the pulser samples in a myqlm result
     myqlm_result = test_ising_qpu.convert_samples_to_result(sim_samples)
     myqlm_result_from_dict = test_ising_qpu.convert_samples_to_result(sim_samples_dict)
-    assert (
-        myqlm_result.meta_data["n_samples"] == n_samples
-        and myqlm_result.meta_data["n_qubits"] == test_ising_qpu.nbqubits
-    )
+    assert myqlm_result.meta_data["n_samples"] == str(
+        n_samples
+    ) and myqlm_result.meta_data["n_qubits"] == str(test_ising_qpu.nbqubits)
 
     myqlm_samples = {
         sample.state.int: sample.probability for sample in myqlm_result.raw_data
@@ -485,6 +484,11 @@ def test_run_sequence(schedule_seq, qpu):
         aqpu.submit(job_from_seq)
     # Can't simulate a time-dependent job with a PyLinalg AQPU
     aqpu.set_qpu(PyLinalg())
+    with pytest.raises(
+        ValueError,
+        match="`submit_job` must not be used if the qpu attribute is defined,",
+    ):
+        aqpu.submit_job(schedule.to_job())
     with pytest.raises(TypeError, match="'NoneType' object is not"):
         aqpu.submit(schedule.to_job())
 
@@ -587,7 +591,6 @@ def test_successful_QPU(mock_get, mock_post, base_uri, device, schedule_seq):
     server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, 1235))
     server_thread.daemon = True
     server_thread.start()
-    # server_thread.join()  # kill thread
 
     # Simulate Sequence using Pulser Simulation
     _, seq = schedule_seq
