@@ -12,9 +12,11 @@ from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register import Register
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
+from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Result, Sample, Schedule
 from qat.core.qpu import QPUHandler
 from qat.core.variables import ArithExpression, Symbol, cos, sin
+from qat.lang.AQASM import CCNOT, Program
 from qat.qpus import PyLinalg
 
 from pulser_myqlm import FresnelDevice, FresnelQPU, IsingAQPU
@@ -58,6 +60,12 @@ def test_distances(test_ising_qpu):
 
 
 def test_ising_init(test_ising_qpu):
+    with pytest.raises(ValueError, match="The provided device must be"):
+        IsingAQPU(12, test_ising_qpu.register)
+    with pytest.raises(ValueError, match="The provided register must be"):
+        IsingAQPU(test_ising_qpu.device, 12)
+    with pytest.raises(ValueError, match="The provided qpu must be"):
+        IsingAQPU(test_ising_qpu.device, test_ising_qpu.register, 12)
     assert test_ising_qpu.channel == "rydberg_global"
     # Test the Ising AQPU with no rydberg global channel
     device = VirtualDevice(
@@ -388,7 +396,12 @@ def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_isin
     )
     # for incorrect meta-data
     myqlm_result.meta_data = meta_data
-    with pytest.raises(ValueError, match=err_mess):
+    with pytest.raises(
+        TypeError
+        if ("n_qubits" in meta_data and meta_data["n_qubits"] is None)
+        else ValueError,
+        match=err_mess,
+    ):
         test_ising_qpu.convert_result_to_samples(myqlm_result)
 
 
@@ -452,11 +465,22 @@ def test_run_sequence(schedule_seq, qpu):
         sim_qpu = FresnelQPU(None)
         assert sim_qpu.is_operational
         sim_qpu.check_system()
+        # Deploying it on a remote server using serve
         server_thread = Thread(target=deploy_qpu, args=(sim_qpu, 1234))
         server_thread.daemon = True
         server_thread.start()
 
     aqpu = IsingAQPU.from_sequence(seq, qpu=sim_qpu)
+    # QPUs can only run job with a schedule
+    prog = Program()
+    qbits = prog.qalloc(CCNOT.arity)
+    CCNOT(qbits)
+    job = prog.to_circ().to_job()
+    print(type(job))
+    with pytest.raises(
+        QPUException, match="FresnelQPU can only execute a schedule job."
+    ):
+        aqpu.submit(job)
     # Run job created from a sequence
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
     assert job_from_seq.nbshots == 1000
@@ -629,16 +653,16 @@ def test_non_operational_QPU(mock_get, schedule_seq):
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
     assert not fresnel_qpu.is_operational
-    with pytest.raises(OSError, match="QPU not operational,"):
+    with pytest.raises(QPUException, match="QPU not operational,"):
         fresnel_qpu.check_system()
     # Deploy the QPU on a Qaptiva server
-    with pytest.raises(OSError, match="QPU not operational,"):
+    with pytest.raises(QPUException, match="QPU not operational,"):
         fresnel_qpu.serve(1234)
 
     # Simulate Sequence using Pulser Simulation
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-    with pytest.raises(OSError, match="QPU not operational,"):
+    with pytest.raises(QPUException, match="QPU not operational,"):
         fresnel_qpu.submit(job_from_seq)
 
 

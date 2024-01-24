@@ -16,6 +16,7 @@ from pulser.devices._device_datacls import COORD_PRECISION, BaseDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register.base_register import BaseRegister
 from pulser_simulation import QutipEmulator
+from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Batch, BatchResult, Job, Observable, Result, Schedule, Term
 from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
@@ -40,7 +41,7 @@ def deserialize_other(other_bytestr: bytes | None) -> dict:
     """
     if not isinstance(other_bytestr, bytes):
         raise ValueError("job.schedule._other must be a string encoded in bytes.")
-    other_dict = json.loads(other_bytestr.decode())
+    other_dict = json.loads(other_bytestr.decode(encoding="utf-8"))
     if not (isinstance(other_dict, dict) and "abstr_seq" in other_dict):
         raise ValueError(
             "An abstract representation of the Sequence must be associated with the"
@@ -52,8 +53,8 @@ def deserialize_other(other_bytestr: bytes | None) -> dict:
     except Exception as e:
         raise ValueError(
             "Failed to deserialize the value associated to 'abstr_seq' in "
-            f"job.schedule._other as a Pulser Sequence. Following error occured: {e}"
-        )
+            "job.schedule._other as a Pulser Sequence."
+        ) from e
     other_dict["seq"] = seq
     return other_dict
 
@@ -102,6 +103,15 @@ class IsingAQPU(QPUHandler):
         self, device: BaseDevice, register: BaseRegister, qpu: CommonQPU | None = None
     ) -> None:
         super().__init__()
+        for test_value in [
+            (device, "device", BaseDevice),
+            (register, "register", BaseRegister),
+        ]:
+            if not isinstance(test_value[0], test_value[2]):
+                raise ValueError(
+                    f"The provided {test_value[1]} must be of type {test_value[2]},"
+                    f" not {type(test_value[0])}"
+                )
         self.device = device
         self.check_channels_device(self.device)
         self.register = register
@@ -137,6 +147,11 @@ class IsingAQPU(QPUHandler):
                 associated to the Job. Otherwise, it can be a QPU running locally or a
                 RemoteQPU to run the Job on a server.
         """
+        if qpu is not None and not isinstance(qpu, CommonQPU):
+            raise ValueError(
+                "The provided qpu must be None or a `CommonQPU` instance (QPUHandler,"
+                " RemoteQPU, ...)."
+            )
         self.qpu = qpu
 
     @property
@@ -342,25 +357,25 @@ class IsingAQPU(QPUHandler):
             )
 
     @staticmethod
-    def convert_samples_to_result(pulser_samples: Counter | dict[str, int]) -> Result:
+    def convert_samples_to_result(result_samples: Counter | dict[str, int]) -> Result:
         """Converts the output of a sampling into a MyQLM Result.
 
         Args:
-            pulser_samples: A dictionary of strings describing the measured states
+            result_samples: A dictionary of strings describing the measured states
                 and their respective counts.
 
         Returns:
             Result: A myqlm Result associating each state with
                 its frequency of occurence in pulser_samples.
         """
-        n_samples = int(sum(pulser_samples.values()))
+        n_samples = int(sum(result_samples.values()))
         # Associates to each measured state its frequency of occurence
         meta_data = {"n_samples": str(n_samples)}
-        if pulser_samples:
-            meta_data["n_qubits"] = str(len(list(pulser_samples.keys())[0]))
+        if result_samples:
+            meta_data["n_qubits"] = str(len(list(result_samples.keys())[0]))
 
         myqlm_result = Result(meta_data=meta_data)
-        for state, counts in pulser_samples.items():
+        for state, counts in result_samples.items():
             myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
         return myqlm_result
 
@@ -395,14 +410,14 @@ class IsingAQPU(QPUHandler):
             )
         try:
             n_qubits = int(myqlm_result.meta_data["n_qubits"])
-        except (ValueError, TypeError):
-            raise ValueError("n_qubits must be castable to an integer.")
+        except (ValueError, TypeError) as e:
+            raise type(e)("n_qubits must be castable to an integer.")
         try:
             n_samples = int(myqlm_result.meta_data["n_samples"])
             if n_samples <= 0:
                 raise ValueError
-        except (ValueError, TypeError):
-            raise ValueError(
+        except (ValueError, TypeError) as e:
+            raise type(e)(
                 "n_samples must be castable to an integer strictly greater than 0."
             )
 
@@ -432,14 +447,14 @@ class IsingAQPU(QPUHandler):
                 into a Batch, executed, and the first result is returned.
 
         Returns:
-            a batch result
+            A batch result.
         """
         if self.qpu is None:
             return super().submit(batch)
         return self.qpu.submit(batch)
 
     def submit_job(self, job: Job) -> Result:
-        """Submit a MyQLM job to the QPU.
+        """Simulate a MyQLM Job using pulser_simulation.
 
         If no QPU has been provided, simulation of the Pulser Sequence associated with
         the MyQLM Job is performed using pulser_simulation. Default number of shots is
@@ -453,17 +468,17 @@ class IsingAQPU(QPUHandler):
             job: the MyQLM Job to execute.
 
         Returns:
-            a result
+            A MyQLM Result.
         """
         if self.qpu is not None:
             raise ValueError(
                 "`submit_job` must not be used if the qpu attribute is defined,"
                 " use the `submit` method instead."
             )
+        if job.schedule is None:
+            raise QPUException("FresnelQPU can only execute a schedule job.")
         other_dict = deserialize_other(job.schedule._other)
-        modulation = (
-            False if "modulation" not in other_dict else other_dict["modulation"]
-        )
+        modulation = other_dict.get("modulation", False)
         self._check_equivalence_sequence_schedule(
             other_dict["seq"], job.schedule, modulation
         )
@@ -477,7 +492,7 @@ class FresnelQPU(QPUHandler):
 
     Connects to the API of the Fresnel QPU via a base_uri to send jobs to it.
     To deploy this QPU on a server, use its `serve` method. Any client can then
-    access this QPU remotly using a `RemoteQPU` with correct port and IP.
+    access this QPU remotely using a `RemoteQPU` with correct port and IP.
 
     Args:
         base_uri: A string of shape 'https://myserver.com/api'. If None,
@@ -515,7 +530,7 @@ class FresnelQPU(QPUHandler):
     def check_system(self) -> None:
         """Check that the system is operational."""
         if not self.is_operational:
-            raise OSError(
+            raise QPUException(
                 "QPU not operational, please run calibration and validation of the "
                 "devices prior to creating the FresnelQPU"
             )
@@ -551,25 +566,25 @@ class FresnelQPU(QPUHandler):
                 Sequence must be compatible with FresnelDevice, and equivalent to the
                 schedule of the Job.
         """
+        if job.schedule is None:
+            raise QPUException("FresnelQPU can only execute a schedule job.")
         other_dict = deserialize_other(job.schedule._other)
         seq = other_dict["seq"]
         # Validate that Sequence is compatible with FresnelDevice
         try:
-            if seq.device != FresnelDevice:
-                seq = seq.switch_device(FresnelDevice, strict=True)
+            if seq.device != self.device:
+                seq = seq.switch_device(self.device, strict=True)
         except Exception as e:
             raise ValueError(
                 "The Sequence in job.schedule._other['abstr_seq'] is not compatible "
-                f"with FresnelDevice. Following error occured: {e}"
-            )
+                "with the properties of the QPU (see FresnelQPU.device)."
+            ) from e
         if not FresnelDevice.register_is_from_calibrated_layout(seq.register):
             raise ValueError(
                 "The Register of the Sequence in job.schedule._other['abstr_seq'] must "
                 "be defined from a layout in the calibrated layouts of FresnelDevice."
             )
-        modulation = (
-            False if "modulation" not in other_dict else other_dict["modulation"]
-        )
+        modulation = other_dict.get("modulation", False)
         IsingAQPU._check_equivalence_sequence_schedule(
             seq,
             job.schedule,
