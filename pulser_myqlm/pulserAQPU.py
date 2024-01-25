@@ -6,14 +6,16 @@ import time
 import warnings
 from collections import Counter
 from functools import cached_property
+from pathlib import Path
 from typing import cast
 
 import numpy as np
 import requests
 from pulser import Sequence, sampler
 from pulser.channels import Rydberg
-from pulser.devices._device_datacls import COORD_PRECISION, BaseDevice
+from pulser.devices._device_datacls import COORD_PRECISION, BaseDevice, Device
 from pulser.devices.interaction_coefficients import c6_dict
+from pulser.json.abstract_repr.deserializer import deserialize_device
 from pulser.register.base_register import BaseRegister
 from pulser_simulation import QutipEmulator
 from qat.comm.exceptions.ttypes import QPUException
@@ -22,8 +24,12 @@ from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
 from scipy.spatial.distance import cdist
 
-from pulser_myqlm.devices import DEFAULT_NUMBER_OF_SHOTS, FresnelDevice
 from pulser_myqlm.myqlmtools import are_equivalent_schedules
+
+DEFAULT_NUMBER_OF_SHOTS = 2000
+
+with open(Path(__file__).parent / "temp_device.json", "r", encoding="utf-8") as f:
+    TEMP_DEVICE = cast(Device, deserialize_device(json.dumps(json.load(f))))
 
 
 def deserialize_other(other_bytestr: bytes | None) -> dict:
@@ -385,11 +391,13 @@ class IsingAQPU(QPUHandler):
 
         To convert a MyQLM Result into the output of a sampling, the number of samples
         performed and the number of qubits need to be precised in the meta_data under
-        the keys "n_samples" and "n_qubits" respectively.
+        the keys "n_samples" and "n_qubits" respectively. This is automatically filled
+        when the MyQLM Result were obtained from `convert_samples_to_result`.
 
         Args:
             myqlm_result: A Result instance having information about the measurement
-                outcome in raw_data and about the number of samples in meta_data.
+                outcome in raw_data and about the number of samples and number of
+                qubits in meta_data.
 
         Returns:
             A dictionary of strings describing the measured states
@@ -511,7 +519,6 @@ class FresnelQPU(QPUHandler):
         super().__init__()
         self.max_nbshots = max_nbshots
         self.base_uri = None if base_uri is None else base_uri + "/" + version
-        self.device: BaseDevice = FresnelDevice
         self.is_operational  # Check that base_uri is correct
 
     @property
@@ -526,6 +533,12 @@ class FresnelQPU(QPUHandler):
                 f"{self.base_uri} is correct."
             )
         return cast(str, response.json()["data"]["operational_status"]) == "UP"
+
+    @property
+    def device(self) -> Device:
+        """The current state of the Device that can be executed on the hardware."""
+        # TODO: requests.get(url=self.base_uri+"/system/device")
+        return TEMP_DEVICE
 
     def check_system(self) -> None:
         """Check that the system is operational."""
@@ -571,15 +584,16 @@ class FresnelQPU(QPUHandler):
         other_dict = deserialize_other(job.schedule._other)
         seq = other_dict["seq"]
         # Validate that Sequence is compatible with FresnelDevice
+        current_device = self.device
         try:
-            if seq.device != self.device:
-                seq = seq.switch_device(self.device, strict=True)
+            if seq.device != current_device:
+                seq = seq.switch_device(current_device, strict=True)
         except Exception as e:
             raise ValueError(
                 "The Sequence in job.schedule._other['abstr_seq'] is not compatible "
                 "with the properties of the QPU (see FresnelQPU.device)."
             ) from e
-        if not FresnelDevice.register_is_from_calibrated_layout(seq.register):
+        if not current_device.register_is_from_calibrated_layout(seq.register):
             raise ValueError(
                 "The Register of the Sequence in job.schedule._other['abstr_seq'] must "
                 "be defined from a layout in the calibrated layouts of FresnelDevice."

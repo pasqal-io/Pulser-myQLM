@@ -2,14 +2,14 @@ import pytest
 from qat.core.variables import Variable
 
 from pulser_myqlm import IsingAQPU
-from pulser_myqlm.devices import FresnelDevice
+from pulser_myqlm.pulserAQPU import TEMP_DEVICE
 
 
 @pytest.fixture
 def test_ising_qpu() -> IsingAQPU:
     return IsingAQPU(
-        FresnelDevice,
-        FresnelDevice.pre_calibrated_layouts[0].define_register(26, 35, 30),
+        TEMP_DEVICE,
+        TEMP_DEVICE.pre_calibrated_layouts[0].define_register(26, 35, 30),
     )
 
 

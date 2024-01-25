@@ -19,8 +19,8 @@ from qat.core.variables import ArithExpression, Symbol, cos, sin
 from qat.lang.AQASM import CCNOT, Program
 from qat.qpus import PyLinalg
 
-from pulser_myqlm import FresnelDevice, FresnelQPU, IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules
+from pulser_myqlm.pulserAQPU import TEMP_DEVICE, FresnelQPU, IsingAQPU
 
 
 def Pmod(a: float, b: float) -> float:
@@ -601,9 +601,7 @@ def mocked_requests_post_fail(*args, **kwargs):
     side_effect=mocked_requests_post_success,
 )
 @pytest.mark.parametrize("base_uri", ["http://fresneldevice/api", None])
-@pytest.mark.parametrize(
-    "device", [FresnelDevice, FresnelDevice.to_virtual(), MockDevice]
-)
+@pytest.mark.parametrize("device", [TEMP_DEVICE, TEMP_DEVICE.to_virtual(), MockDevice])
 def test_successful_QPU(mock_get, mock_post, base_uri, device, schedule_seq):
     np.random.seed(123)
     with pytest.raises(ValueError, match="Connection with API failed"):
@@ -618,7 +616,7 @@ def test_successful_QPU(mock_get, mock_post, base_uri, device, schedule_seq):
 
     # Simulate Sequence using Pulser Simulation
     _, seq = schedule_seq
-    if device != FresnelDevice:
+    if device != TEMP_DEVICE:
         if device == MockDevice:
             with pytest.warns(UserWarning, match="Switching to a device"):
                 seq = seq.switch_device(device)
@@ -637,7 +635,7 @@ def test_successful_QPU(mock_get, mock_post, base_uri, device, schedule_seq):
         ]
         assert compare_results_raw_data(result.raw_data, exp_result)
     # Can't simulate if register is not from calibrated layout
-    seq = Sequence(Register.triangular_lattice(2, 2, spacing=5), FresnelDevice)
+    seq = Sequence(Register.triangular_lattice(2, 2, spacing=5), TEMP_DEVICE)
     seq.declare_channel("rydberg_global", "rydberg_global")
     seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
