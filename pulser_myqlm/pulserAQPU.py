@@ -29,7 +29,7 @@ from pulser_myqlm.myqlmtools import are_equivalent_schedules
 DEFAULT_NUMBER_OF_SHOTS = 2000
 
 with open(Path(__file__).parent / "temp_device.json", "r", encoding="utf-8") as f:
-    TEMP_DEVICE = cast(Device, deserialize_device(json.dumps(json.load(f))))
+    TEMP_DEVICE = cast(Device, deserialize_device(f.read()))
 
 
 def deserialize_other(other_bytestr: bytes | None) -> dict:
@@ -114,7 +114,7 @@ class IsingAQPU(QPUHandler):
             (register, "register", BaseRegister),
         ]:
             if not isinstance(test_value[0], test_value[2]):
-                raise ValueError(
+                raise TypeError(
                     f"The provided {test_value[1]} must be of type {test_value[2]},"
                     f" not {type(test_value[0])}"
                 )
@@ -154,7 +154,7 @@ class IsingAQPU(QPUHandler):
                 RemoteQPU to run the Job on a server.
         """
         if qpu is not None and not isinstance(qpu, CommonQPU):
-            raise ValueError(
+            raise TypeError(
                 "The provided qpu must be None or a `CommonQPU` instance (QPUHandler,"
                 " RemoteQPU, ...)."
             )
