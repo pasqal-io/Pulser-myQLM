@@ -667,14 +667,14 @@ def test_job_simulation(mock_get, mock_post, base_uri, device, schedule_seq):
     "pulser_myqlm.pulserAQPU.requests.get",
     side_effect=mocked_requests_get_non_operational,
 )
-def test_non_operational_QPU(mock_get, schedule_seq):
+def test_non_operational_qpu(mock_get, schedule_seq):
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
     assert not fresnel_qpu.is_operational
-    with pytest.raises(QPUException, match="QPU not operational,"):
+    with pytest.warns(UserWarning, match="QPU not operational,"):
         fresnel_qpu.check_system()
     # Deploy the QPU on a Qaptiva server
-    with pytest.raises(QPUException, match="QPU not operational,"):
+    with pytest.warns(UserWarning, match="QPU not operational,"):
         fresnel_qpu.serve(1234)
 
     # Simulate Sequence using Pulser Simulation

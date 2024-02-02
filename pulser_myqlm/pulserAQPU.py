@@ -540,13 +540,16 @@ class FresnelQPU(QPUHandler):
         # TODO: requests.get(url=self.base_uri+"/system/device")
         return TEMP_DEVICE
 
-    def check_system(self) -> None:
-        """Check that the system is operational."""
+    def check_system(self, raise_error: bool = False) -> None:
+        """Raises a warning or an error if the system is not operational."""
         if not self.is_operational:
-            raise QPUException(
+            msg = (
                 "QPU not operational, please run calibration and validation of the "
                 "devices prior to creating the FresnelQPU"
             )
+            if raise_error:
+                raise QPUException(msg)
+            warnings.warn(msg, UserWarning)
 
     def serve(
         self, port: int, host_ip: str = "localhost", server_type: str | None = None
@@ -605,7 +608,7 @@ class FresnelQPU(QPUHandler):
             modulation,
         )
         # Check that the system is operational
-        self.check_system()
+        self.check_system(raise_error=True)
         # Submit a job to the API
         payload = {
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
