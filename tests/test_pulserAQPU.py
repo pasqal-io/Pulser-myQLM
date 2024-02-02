@@ -674,9 +674,10 @@ def test_non_operational_qpu(mock_get, schedule_seq):
     with pytest.warns(UserWarning, match="QPU not operational,"):
         fresnel_qpu.check_system()
     # Deploy the QPU on a Qaptiva server
+    server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, 1236))
+    server_thread.daemon = True
     with pytest.warns(UserWarning, match="QPU not operational,"):
-        fresnel_qpu.serve(1234)
-
+        server_thread.start()
     # Simulate Sequence using Pulser Simulation
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
