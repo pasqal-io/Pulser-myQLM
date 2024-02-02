@@ -163,9 +163,11 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
         }
 
     amp, det, phase = (
-        request.getfixturevalue(pulse_attr)
-        if isinstance(pulse_attr, str)
-        else pulse_attr
+        (
+            request.getfixturevalue(pulse_attr)
+            if isinstance(pulse_attr, str)
+            else pulse_attr
+        )
         for pulse_attr in (amp, det, phase)
     )
 
@@ -234,9 +236,11 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
 )
 def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
     amp, det, phase = (
-        request.getfixturevalue(pulse_attr)
-        if isinstance(pulse_attr, str)
-        else pulse_attr
+        (
+            request.getfixturevalue(pulse_attr)
+            if isinstance(pulse_attr, str)
+            else pulse_attr
+        )
         for pulse_attr in (amp, det, phase)
     )
     ising_ham = test_ising_qpu.hamiltonian(amp, det, phase)
@@ -397,9 +401,11 @@ def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_isin
     # for incorrect meta-data
     myqlm_result.meta_data = meta_data
     with pytest.raises(
-        TypeError
-        if ("n_qubits" in meta_data and meta_data["n_qubits"] is None)
-        else ValueError,
+        (
+            TypeError
+            if ("n_qubits" in meta_data and meta_data["n_qubits"] is None)
+            else ValueError
+        ),
         match=err_mess,
     ):
         test_ising_qpu.convert_result_to_samples(myqlm_result)
