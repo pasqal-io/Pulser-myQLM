@@ -437,13 +437,17 @@ def test_convert_sequence_to_job(schedule_seq, modulation):
         ),
     ],
 )
-@pytest.mark.parametrize("qpu", [None, FresnelQPU(None)])
-def test_job_deserialization(schedule_seq, other_value, err_mess, qpu):
+def test_job_deserialization(schedule_seq, other_value, err_mess):
     schedule, seq = schedule_seq
-    aqpu = IsingAQPU.from_sequence(seq, qpu=qpu)
+    aqpu = IsingAQPU.from_sequence(seq)
     job = schedule.to_job()
     job.schedule._other = other_value
     with pytest.raises(ValueError, match=err_mess):
+        aqpu.submit(job)
+    aqpu.set_qpu(FresnelQPU(None))
+    with pytest.raises(
+        QPUException, match="Failed at deserializing Job.Schedule._other"
+    ):
         aqpu.submit(job)
 
 
@@ -616,7 +620,7 @@ def _switch_seq_device(seq, device):
 @pytest.mark.parametrize("base_uri", ["http://fresneldevice/api", None])
 def test_job_submission(mock_get, mock_post, base_uri, schedule_seq):
     # Can't connect with a wrong address
-    with pytest.raises(ValueError, match="Connection with API failed"):
+    with pytest.raises(QPUException, match="Connection with API failed"):
         FresnelQPU(base_uri="")
 
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
@@ -630,7 +634,7 @@ def test_job_submission(mock_get, mock_post, base_uri, schedule_seq):
     _, seq = schedule_seq
     mock_seq = _switch_seq_device(seq, MockDevice)
     job_from_seq = IsingAQPU.convert_sequence_to_job(mock_seq)
-    with pytest.raises(ValueError, match="The Sequence in job.schedule._other"):
+    with pytest.raises(QPUException, match="The Sequence in job.schedule._other"):
         fresnel_qpu.submit(job_from_seq)
 
     # Can't simulate if register is not from calibrated layout
@@ -638,7 +642,7 @@ def test_job_submission(mock_get, mock_post, base_uri, schedule_seq):
     seq.declare_channel("rydberg_global", "rydberg_global")
     seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-    with pytest.raises(ValueError, match="The Register of the Sequence"):
+    with pytest.raises(QPUException, match="The Register of the Sequence"):
         fresnel_qpu.submit(job_from_seq)
 
 
@@ -703,7 +707,7 @@ def test_submission_error(mock_get, mock_post, schedule_seq):
     # Simulate Sequence using Pulser Simulation
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-    with pytest.raises(Exception, match="Could not create job"):
+    with pytest.raises(QPUException, match="Could not create job"):
         fresnel_qpu.submit(job_from_seq)
 
 
@@ -720,5 +724,5 @@ def test_execution_error(mock_get, mock_post, schedule_seq):
     # Simulate Sequence using Pulser Simulation
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-    with pytest.raises(Exception, match="An error occured,"):
+    with pytest.raises(QPUException, match="An error occured,"):
         fresnel_qpu.submit(job_from_seq)
