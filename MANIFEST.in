@@ -1,0 +1,3 @@
+include README.md
+include LICENSE
+include pulser-myqlm/temp_device.json

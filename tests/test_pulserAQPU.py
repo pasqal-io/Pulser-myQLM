@@ -1,16 +1,26 @@
+import json
+from collections import Counter
+from threading import Thread
+from unittest import mock
+
 import numpy as np
 import pytest
 from pulser import Pulse, Sequence
 from pulser.channels import Raman, Rydberg
-from pulser.devices import VirtualDevice
+from pulser.devices import MockDevice, VirtualDevice
 from pulser.devices.interaction_coefficients import c6_dict
+from pulser.register import Register
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
-from qat.core import Job, Schedule
+from qat.comm.exceptions.ttypes import QPUException
+from qat.core import Job, Result, Sample, Schedule
+from qat.core.qpu import QPUHandler
 from qat.core.variables import ArithExpression, Symbol, cos, sin
+from qat.lang.AQASM import CCNOT, Program
+from qat.qpus import PyLinalg
 
-from pulser_myqlm import IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules
+from pulser_myqlm.pulserAQPU import TEMP_DEVICE, FresnelQPU, IsingAQPU
 
 
 def Pmod(a: float, b: float) -> float:
@@ -34,31 +44,28 @@ def test_mod(mod_value, u_variable):
     assert mod_expr(u=a) == result
 
 
-def test_nbqubits(test_pulser_qpu):
-    assert test_pulser_qpu.nbqubits == 4
+def test_nbqubits(test_ising_qpu):
+    assert test_ising_qpu.nbqubits == 3
 
 
-def test_distances(test_pulser_qpu):
+def test_distances(test_ising_qpu):
     dist_tl = np.array(
         [
-            [0, 0, 0, 0],
-            [4, 0, 0, 0],
-            [4, 4 * np.sqrt(2), 0, 0],
-            [4 * np.sqrt(2), 4, 4, 0],
+            [0, 0, 0],
+            [5, 0, 0],
+            [5, 5, 0],
         ]
     )
-    assert np.all(test_pulser_qpu.distances == dist_tl + dist_tl.T)
-
-
-def test_submit_job_pulser_qpu(test_pulser_qpu):
-    with pytest.raises(
-        NotImplementedError,
-        match="Submit job only implemented for hardware-specific qpus, not PulserAQPU.",
-    ):
-        test_pulser_qpu.submit_job(Job())
+    assert np.all(test_ising_qpu.distances == dist_tl + dist_tl.T)
 
 
 def test_ising_init(test_ising_qpu):
+    with pytest.raises(TypeError, match="The provided device must be"):
+        IsingAQPU(12, test_ising_qpu.register)
+    with pytest.raises(TypeError, match="The provided register must be"):
+        IsingAQPU(test_ising_qpu.device, 12)
+    with pytest.raises(TypeError, match="The provided qpu must be"):
+        IsingAQPU(test_ising_qpu.device, test_ising_qpu.register, 12)
     assert test_ising_qpu.channel == "rydberg_global"
     # Test the Ising AQPU with no rydberg global channel
     device = VirtualDevice(
@@ -91,14 +98,12 @@ def test_c6_interactions(test_ising_qpu):
         np.diagonal(test_ising_qpu.c6_interactions)
         == np.zeros((1, test_ising_qpu.nbqubits))
     )
-    int_edge = c6_dict[test_ising_qpu.device.rydberg_level] / 4**6
-    int_diag = c6_dict[test_ising_qpu.device.rydberg_level] / (4 * np.sqrt(2)) ** 6
+    int_edge = c6_dict[test_ising_qpu.device.rydberg_level] / 5**6
     int_tl = np.array(
         [
-            [0, 0, 0, 0],
-            [int_edge, 0, 0, 0],
-            [int_edge, int_diag, 0, 0],
-            [int_diag, int_edge, int_edge, 0],
+            [0, 0, 0],
+            [int_edge, 0, 0],
+            [int_edge, int_edge, 0],
         ]
     )
     assert np.all(test_ising_qpu.c6_interactions == int_tl + int_tl.T)
@@ -158,9 +163,11 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
         }
 
     amp, det, phase = (
-        request.getfixturevalue(pulse_attr)
-        if isinstance(pulse_attr, str)
-        else pulse_attr
+        (
+            request.getfixturevalue(pulse_attr)
+            if isinstance(pulse_attr, str)
+            else pulse_attr
+        )
         for pulse_attr in (amp, det, phase)
     )
 
@@ -229,9 +236,11 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
 )
 def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
     amp, det, phase = (
-        request.getfixturevalue(pulse_attr)
-        if isinstance(pulse_attr, str)
-        else pulse_attr
+        (
+            request.getfixturevalue(pulse_attr)
+            if isinstance(pulse_attr, str)
+            else pulse_attr
+        )
         for pulse_attr in (amp, det, phase)
     )
     ising_ham = test_ising_qpu.hamiltonian(amp, det, phase)
@@ -265,9 +274,11 @@ def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
 
 @pytest.mark.parametrize("device_type", ["raman", "local"])
 def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
-    # Which is equivalent to having defined pulses using a Sequence
-    seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
+    # An empty sequence returns an empty Schedule
+    seq = Sequence(test_ising_qpu.register, MockDevice)
     assert Schedule() == IsingAQPU.convert_sequence_to_schedule(seq)
+    # Conversion only works for Rydberg Global channel
+    # Does not work if a Raman Global channel is declared
     if device_type == "raman":
         seq.declare_channel("ram_glob", "raman_global")
         with pytest.raises(
@@ -275,6 +286,7 @@ def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
             match="Declared channel is not Rydberg.",
         ):
             IsingAQPU.convert_sequence_to_schedule(seq)
+    # Does not work if a Local Rydberg channel is declared
     elif device_type == "local":
         seq.declare_channel("ryd_loc", "rydberg_local")
         with pytest.raises(
@@ -282,7 +294,10 @@ def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
             match="Declared channel is not Rydberg.Global.",
         ):
             IsingAQPU.convert_sequence_to_schedule(seq)
+    # Does not work if multiple Rydberg Global channels are declared
+    seq = Sequence(test_ising_qpu.register, MockDevice)
     seq.declare_channel("ryd_glob", "rydberg_global")
+    seq.declare_channel("ryd_glob1", "rydberg_global")
     with pytest.raises(
         ValueError,
         match="More than one channel declared.",
@@ -290,7 +305,8 @@ def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
         IsingAQPU.convert_sequence_to_schedule(seq)
 
 
-def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
+@pytest.fixture
+def schedule_seq(test_ising_qpu, omega_t, delta_t):
     t0 = 16  # in ns
     H0 = test_ising_qpu.hamiltonian(omega_t, delta_t, 0)
     t1 = 20  # in ns
@@ -317,15 +333,50 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
         ),
         "ryd_glob",
     )
-    seq.add(Pulse.ConstantPulse(t1, 1, 0, 0), "ryd_glob")
-    seq.add(Pulse.ConstantPulse(t2, 1, 0, np.pi / 2), "ryd_glob")
+    seq.add(Pulse.ConstantPulse(t1, 1, 0, 0), "ryd_glob", protocol="no-delay")
+    seq.add(Pulse.ConstantPulse(t2, 1, 0, np.pi / 2), "ryd_glob", protocol="no-delay")
+    return (schedule, seq)
+
+
+def test_convert_sequence_to_schedule(schedule_seq):
+    schedule, seq = schedule_seq
+    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq)
+    assert isinstance(schedule_from_seq, Schedule)
+    assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
+
+
+@pytest.mark.parametrize(
+    "meta_data, err_mess",
+    [
+        ({}, "Meta data must be a dictionary."),
+        ({"n_qubits": None, "n_samples": 0}, "n_qubits must be castable."),
+        (
+            {"n_qubits": 1, "n_samples": 0},
+            "n_samples must be castable to an integer strictly greater than 0.",
+        ),
+        (
+            {"n_qubits": 1, "n_samples": 1000},
+            "State 4 is incompatible with number of qubits declared 1",
+        ),
+        (
+            {"n_qubits": 4, "n_samples": 999},
+            "Probability associated with state 0 does not",
+        ),
+    ],
+)
+def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_ising_qpu):
+    np.random.seed(123)
+    _, seq = schedule_seq
     sim_result = QutipEmulator.from_sequence(seq, sampling_rate=0.1).run()
     n_samples = 1000
     sim_samples = sim_result.sample_final_state(n_samples)
     sim_samples_dict = {k: v for k, v in sim_samples.items()}
     # Testing the conversion of the pulser samples in a myqlm result
-    myqlm_result = test_ising_qpu.convert_pulser_samples(sim_samples)
-    myqlm_result_from_dict = test_ising_qpu.convert_pulser_samples(sim_samples_dict)
+    myqlm_result = test_ising_qpu.convert_samples_to_result(sim_samples)
+    myqlm_result_from_dict = test_ising_qpu.convert_samples_to_result(sim_samples_dict)
+    assert myqlm_result.meta_data["n_samples"] == str(
+        n_samples
+    ) and myqlm_result.meta_data["n_qubits"] == str(test_ising_qpu.nbqubits)
 
     myqlm_samples = {
         sample.state.int: sample.probability for sample in myqlm_result.raw_data
@@ -339,30 +390,345 @@ def test_convert_sequence_to_schedule(test_ising_qpu, omega_t, delta_t):
         == myqlm_samples
         == myqlm_samples_from_dict
     )
-    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq)
-    assert isinstance(schedule_from_seq, Schedule)
-    assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
-
-
-@pytest.mark.parametrize("modulation, extended_duration", [(False, 18), (True, 0)])
-def test_convert_sequence_to_job(test_ising_qpu, modulation, extended_duration):
-    # Which is equivalent to having defined pulses using a Sequence
-    if modulation:
-        device = VirtualDevice(
-            name="VirtDevice",
-            dimensions=2,
-            channel_objects=(
-                Rydberg("Global", max_abs_detuning=None, max_amp=None, mod_bandwidth=4),
-            ),
-            rydberg_level=60,
-        )
-        seq = Sequence(test_ising_qpu.register, device)
-    else:
-        seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
-    seq.declare_channel("ryd_glob", "rydberg_global")
-    seq.add(Pulse.ConstantPulse(16, 1, 0, 0), "ryd_glob")
-    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, modulation, extended_duration)
-    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(
-        seq, modulation, extended_duration
+    # Testing the conversion of a myqlm Result into pulser samples
+    # for an empty Result:
+    assert test_ising_qpu.convert_result_to_samples(Result()) == Counter()
+    # for the sequence above:
+    assert test_ising_qpu.convert_result_to_samples(myqlm_result) == sim_samples
+    assert (
+        test_ising_qpu.convert_result_to_samples(myqlm_result_from_dict) == sim_samples
     )
+    # for incorrect meta-data
+    myqlm_result.meta_data = meta_data
+    with pytest.raises(
+        (
+            TypeError
+            if ("n_qubits" in meta_data and meta_data["n_qubits"] is None)
+            else ValueError
+        ),
+        match=err_mess,
+    ):
+        test_ising_qpu.convert_result_to_samples(myqlm_result)
+
+
+@pytest.mark.parametrize("modulation", [False, True])
+def test_convert_sequence_to_job(schedule_seq, modulation):
+    # Which is equivalent to having defined pulses using a Sequence
+    _, seq = schedule_seq
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, modulation=modulation)
+    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq, modulation)
     assert are_equivalent_schedules(schedule_from_seq, job_from_seq.schedule)
+    assert job_from_seq.nbshots == 0
+    assert schedule_from_seq.to_job().nbshots is None
+    assert job_from_seq.schedule._other == schedule_from_seq._other
+
+
+@pytest.mark.parametrize(
+    "other_value, err_mess",
+    [
+        (None, "job.schedule._other must be a string encoded in bytes."),
+        (
+            json.dumps({"modulation": True}).encode("utf-8"),
+            "An abstract representation of the Sequence",
+        ),
+        (
+            json.dumps({"abstr_seq": "0", "modulation": False}).encode("utf-8"),
+            "Failed to deserialize the value",
+        ),
+    ],
+)
+def test_job_deserialization(schedule_seq, other_value, err_mess):
+    schedule, seq = schedule_seq
+    aqpu = IsingAQPU.from_sequence(seq)
+    job = schedule.to_job()
+    job.schedule._other = other_value
+    with pytest.raises(ValueError, match=err_mess):
+        aqpu.submit(job)
+    aqpu.set_qpu(FresnelQPU(None))
+    with pytest.raises(
+        QPUException, match="Failed at deserializing Job.Schedule._other"
+    ):
+        aqpu.submit(job)
+
+
+def deploy_qpu(qpu: QPUHandler, port: int) -> None:
+    qpu.serve(port, "localhost")
+
+
+def compare_results_raw_data(results1: list, results2: list) -> None:
+    """Check that two lists of samples (as Result.raw_data) are the same."""
+    for i, sample1 in enumerate(results1):
+        assert (sample1.probability, sample1._state) == (
+            results2[i].probability,
+            results2[i]._state,
+        )
+
+
+@pytest.mark.parametrize("qpu", [None, "fresnel", "remote"])
+def test_run_sequence(schedule_seq, qpu):
+    np.random.seed(123)
+    schedule, seq = schedule_seq
+    sim_qpu = None
+    if qpu is not None:
+        sim_qpu = FresnelQPU(None)
+        assert sim_qpu.is_operational
+        sim_qpu.check_system()
+        # Deploying it on a remote server using serve
+        server_thread = Thread(target=deploy_qpu, args=(sim_qpu, 1234))
+        server_thread.daemon = True
+        server_thread.start()
+
+    aqpu = IsingAQPU.from_sequence(seq, qpu=sim_qpu)
+    # FresnelQPUs can only run job with a schedule
+    # Defining a job from a circuit instead of a schedule
+    prog = Program()
+    qbits = prog.qalloc(CCNOT.arity)
+    CCNOT(qbits)
+    job = prog.to_circ().to_job()
+    with pytest.raises(
+        QPUException, match="FresnelQPU can only execute a schedule job."
+    ):
+        aqpu.submit(job)
+
+    # Run job created from a sequence using convert_sequence_to_job
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
+    assert job_from_seq.nbshots == 1000
+    result = aqpu.submit(job_from_seq)
+    exp_result = [
+        Sample(probability=0.999, state=0),
+        Sample(probability=0.001, state=4),
+    ]
+    compare_results_raw_data(result.raw_data, exp_result)
+
+    # Run job created from a sequence using convert_sequence_to_schedule
+    schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
+    job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
+    assert not job_from_seq.nbshots
+    result_schedule = aqpu.submit(job_from_seq)
+    exp_result_schedule = [
+        Sample(probability=0.9995, state=0),
+        Sample(probability=0.0005, state=1),
+    ]
+    compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
+
+    # Can simulate Job if Schedule is not equivalent to Sequence
+    empty_job = Job()
+    empty_schedule = Schedule()
+    empty_schedule._other = schedule_from_seq._other
+    empty_job.schedule = empty_schedule
+    result_empty_sch = aqpu.submit(empty_job)
+    exp_result_empty_sch = [
+        Sample(probability=0.999, state=0),
+        Sample(probability=0.0005, state=1),
+        Sample(probability=0.0005, state=4),
+    ]
+    compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
+
+    # Submit_job of IsingAQPU must not be used if qpu is not None
+    if qpu is not None:
+        with pytest.raises(
+            ValueError,
+            match="`submit_job` must not be used if the qpu attribute is defined,",
+        ):
+            aqpu.submit_job(schedule.to_job())
+
+    # Can't simulate a time-dependent job with PyLinalg (a simulator of circuits)
+    aqpu.set_qpu(PyLinalg())
+    with pytest.raises(TypeError, match="'NoneType' object is not"):
+        aqpu.submit(schedule.to_job())
+
+
+class MockResponse:
+    def __init__(self, json_data, status_code):
+        self.json_data = json_data
+        self.status_code = status_code
+
+    def json(self):
+        return self.json_data
+
+    def text(self):
+        return ""
+
+
+def mocked_requests_get_success(*args, **kwargs):
+    operational_url = "http://fresneldevice/api/latest/system/operational"
+    job_url = "http://fresneldevice/api/latest/jobs/1"
+    if args[0] == operational_url if args else kwargs["url"] == operational_url:
+        return MockResponse({"data": {"operational_status": "UP"}}, 200)
+    elif args[0] == job_url if args else kwargs["url"] == job_url:
+        return MockResponse(
+            {
+                "data": {
+                    "status": "DONE",
+                    "result": json.dumps({"counter": {"000": 0.999, "100": 0.001}}),
+                }
+            },
+            200,
+        )
+    return MockResponse(None, 404)
+
+
+def mocked_requests_get_non_operational(*args, **kwargs):
+    operational_url = "http://fresneldevice/api/latest/system/operational"
+    job_url = "http://fresneldevice/api/latest/jobs/1"
+    if args[0] == operational_url if args else kwargs["url"] == operational_url:
+        return MockResponse({"data": {"operational_status": "DOWN"}}, 200)
+    elif args[0] == job_url if args else kwargs["url"] == job_url:
+        return MockResponse({"data": {"status": "ERROR"}}, 200)
+    return MockResponse(None, 404)
+
+
+def mocked_requests_get_error(*args, **kwargs):
+    operational_url = "http://fresneldevice/api/latest/system/operational"
+    job_url = "http://fresneldevice/api/latest/jobs/1"
+    if args[0] == operational_url if args else kwargs["url"] == operational_url:
+        return MockResponse({"data": {"operational_status": "UP"}}, 200)
+    elif args[0] == job_url if args else kwargs["url"] == job_url:
+        return MockResponse({"data": {"status": "ERROR"}}, 200)
+    return MockResponse(None, 404)
+
+
+def mocked_requests_post_success(*args, **kwargs):
+    job_url = "http://fresneldevice/api/latest/jobs"
+    if args[0] == job_url if args else kwargs["url"] == job_url:
+        if list(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
+            return MockResponse(None, 400)
+        return MockResponse({"data": {"status": "PENDING", "uid": 1}}, 200)
+    return MockResponse(None, 404)
+
+
+def mocked_requests_post_fail(*args, **kwargs):
+    job_url = "http://fresneldevice/api/latest/jobs"
+    if args[0] == job_url if args else kwargs["url"] == job_url:
+        if set(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
+            return MockResponse(None, 400)
+        return MockResponse({"data": {"status": "ERROR", "uid": 1}}, 500)
+    return MockResponse(None, 404)
+
+
+def _switch_seq_device(seq, device):
+    if device != TEMP_DEVICE:
+        if device == MockDevice:
+            with pytest.warns(UserWarning, match="Switching to a device"):
+                seq = seq.switch_device(device)
+        else:
+            seq = seq.switch_device(device)
+    return seq
+
+
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.get", side_effect=mocked_requests_get_success
+)
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.post",
+    side_effect=mocked_requests_post_success,
+)
+@pytest.mark.parametrize("base_uri", ["http://fresneldevice/api", None])
+def test_job_submission(mock_get, mock_post, base_uri, schedule_seq):
+    # Can't connect with a wrong address
+    with pytest.raises(QPUException, match="Connection with API failed"):
+        FresnelQPU(base_uri="")
+
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+
+    # Deploy the QPU on a Qaptiva server
+    server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, 1235))
+    server_thread.daemon = True
+    server_thread.start()
+
+    # Can't submit if the device of the sequence does not match the TEMP_DEVICE
+    _, seq = schedule_seq
+    mock_seq = _switch_seq_device(seq, MockDevice)
+    job_from_seq = IsingAQPU.convert_sequence_to_job(mock_seq)
+    with pytest.raises(QPUException, match="The Sequence in job.schedule._other"):
+        fresnel_qpu.submit(job_from_seq)
+
+    # Can't simulate if register is not from calibrated layout
+    seq = Sequence(Register.triangular_lattice(2, 2, spacing=5), TEMP_DEVICE)
+    seq.declare_channel("rydberg_global", "rydberg_global")
+    seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(QPUException, match="The Register of the Sequence"):
+        fresnel_qpu.submit(job_from_seq)
+
+
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.get", side_effect=mocked_requests_get_success
+)
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.post",
+    side_effect=mocked_requests_post_success,
+)
+@pytest.mark.parametrize("base_uri", ["http://fresneldevice/api", None])
+@pytest.mark.parametrize("device", [TEMP_DEVICE, TEMP_DEVICE.to_virtual()])
+def test_job_simulation(mock_get, mock_post, base_uri, device, schedule_seq):
+    np.random.seed(123)
+
+    # Modify the device of the Sequence
+    _, seq = schedule_seq
+    seq = _switch_seq_device(seq, device)
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+
+    # Simulate Sequence using Pulser Simulation
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    result = fresnel_qpu.submit(job_from_seq)
+    exp_result = [
+        Sample(probability=0.999, state=0),
+        Sample(probability=0.001, state=4),
+    ]
+    compare_results_raw_data(result.raw_data, exp_result)
+
+
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.get",
+    side_effect=mocked_requests_get_non_operational,
+)
+def test_non_operational_qpu(mock_get, schedule_seq):
+    base_uri = "http://fresneldevice/api"
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    assert not fresnel_qpu.is_operational
+    with pytest.warns(UserWarning, match="QPU not operational,"):
+        fresnel_qpu.check_system()
+    # Deploy the QPU on a Qaptiva server
+    server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, 1236))
+    server_thread.daemon = True
+    with pytest.warns(UserWarning, match="QPU not operational,"):
+        server_thread.start()
+    # Simulate Sequence using Pulser Simulation
+    _, seq = schedule_seq
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(QPUException, match="QPU not operational,"):
+        fresnel_qpu.submit(job_from_seq)
+
+
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.get", side_effect=mocked_requests_get_success
+)
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.post", side_effect=mocked_requests_post_fail
+)
+def test_submission_error(mock_get, mock_post, schedule_seq):
+    base_uri = "http://fresneldevice/api"
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    # Simulate Sequence using Pulser Simulation
+    _, seq = schedule_seq
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(QPUException, match="Could not create job"):
+        fresnel_qpu.submit(job_from_seq)
+
+
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.get", side_effect=mocked_requests_get_error
+)
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.post",
+    side_effect=mocked_requests_post_success,
+)
+def test_execution_error(mock_get, mock_post, schedule_seq):
+    base_uri = "http://fresneldevice/api"
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    # Simulate Sequence using Pulser Simulation
+    _, seq = schedule_seq
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(QPUException, match="An error occured,"):
+        fresnel_qpu.submit(job_from_seq)
