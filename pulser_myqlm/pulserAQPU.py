@@ -25,8 +25,6 @@ from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
 from scipy.spatial.distance import cdist
 
-from pulser_myqlm.myqlmtools import are_equivalent_schedules
-
 DEFAULT_NUMBER_OF_SHOTS = 2000
 
 with open(Path(__file__).parent / "temp_device.json", "r", encoding="utf-8") as f:
@@ -342,27 +340,6 @@ class IsingAQPU(QPUHandler):
         schedule = cls.convert_sequence_to_schedule(seq, modulation)
         return schedule.to_job(nbshots=nbshots)
 
-    @classmethod
-    def _check_equivalence_sequence_schedule(
-        cls, seq: Sequence, schedule: Schedule, modulation: bool = False
-    ) -> None:
-        """Check that Sequence and Schedule describe the same hamiltonian.
-
-        Raises an error if the Schedule associated to the Sequence is not equal to the
-        Schedule at each time-step.
-
-        Args:
-            seq: A Pulser Sequence to compare.
-            schedule: A MyQLM Schedule to compare.
-            modulation: If true, compares the modulated samples of the Sequence.
-        """
-        schedule_from_seq = cls.convert_sequence_to_schedule(seq, modulation=modulation)
-        if not are_equivalent_schedules(schedule_from_seq, schedule):
-            raise ValueError(
-                "The Sequence and the Schedule are not equivalent. Please use "
-                "`IsingAQPU.convert_sequence_to_schedule` to perform conversion."
-            )
-
     @staticmethod
     def convert_samples_to_result(result_samples: Counter | dict[str, int]) -> Result:
         """Converts the output of a sampling into a MyQLM Result.
@@ -470,8 +447,7 @@ class IsingAQPU(QPUHandler):
         `pulser_myqlm.devices.DEFAULT_NUMBER_OF_SHOTS`. Pulser Sequence should be
         provided in job.schedule._other. This attribute must be a string in bytes
         containing a dict serialized with json.dumps. The dict must contain at least one
-        key: "abstr_seq". The Pulser Sequence must be equivalent to the Schedule of the
-        Job.
+        key: "abstr_seq".
 
         Args:
             job: the MyQLM Job to execute.
@@ -488,9 +464,6 @@ class IsingAQPU(QPUHandler):
             raise QPUException("FresnelQPU can only execute a schedule job.")
         other_dict = deserialize_other(job.schedule._other)
         modulation = other_dict.get("modulation", False)
-        self._check_equivalence_sequence_schedule(
-            other_dict["seq"], job.schedule, modulation
-        )
         return self.convert_samples_to_result(
             simulate_seq(other_dict["seq"], modulation, job.nbshots)
         )
@@ -580,8 +553,7 @@ class FresnelQPU(QPUHandler):
         Args:
             job: The MyQLM Job to run. Must have an abstract Pulser Sequence under the
                 key 'abstr_seq' of the dictionary serialized in Job.schedule._other. The
-                Sequence must be compatible with FresnelDevice, and equivalent to the
-                schedule of the Job.
+                Sequence must be compatible with FresnelDevice.
         """
         if job.schedule is None:
             raise QPUException("FresnelQPU can only execute a schedule job.")
@@ -606,11 +578,6 @@ class FresnelQPU(QPUHandler):
                 "be defined from a layout in the calibrated layouts of FresnelDevice."
             )
         modulation = other_dict.get("modulation", False)
-        IsingAQPU._check_equivalence_sequence_schedule(
-            seq,
-            job.schedule,
-            modulation,
-        )
         # Check that the system is operational
         self.check_system(raise_error=True)
         # Submit a job to the API
