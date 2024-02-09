@@ -13,7 +13,7 @@ from pulser.register import Register
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
 from qat.comm.exceptions.ttypes import QPUException
-from qat.core import Job, Result, Sample, Schedule
+from qat.core import Result, Sample, Schedule
 from qat.core.qpu import QPUHandler
 from qat.core.variables import ArithExpression, Symbol, cos, sin
 from qat.lang.AQASM import CCNOT, Program
@@ -511,18 +511,12 @@ def test_run_sequence(schedule_seq, qpu):
     ]
     compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
 
-    # Can simulate Job if Schedule is not equivalent to Sequence
-    empty_job = Job()
-    empty_schedule = Schedule()
-    empty_schedule._other = schedule_from_seq._other
-    empty_job.schedule = empty_schedule
-    result_empty_sch = aqpu.submit(empty_job)
-    exp_result_empty_sch = [
-        Sample(probability=0.999, state=0),
-        Sample(probability=0.0005, state=1),
-        Sample(probability=0.0005, state=4),
-    ]
-    compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
+    # Can't simulate Job if Schedule is not equivalent to Sequence
+    job_from_seq.schedule = 2 * job_from_seq.schedule
+    with pytest.raises(
+        ValueError, match="The Sequence and the Schedule are not equivalent."
+    ):
+        aqpu.submit(job_from_seq)
 
     # Submit_job of IsingAQPU must not be used if qpu is not None
     if qpu is not None:
