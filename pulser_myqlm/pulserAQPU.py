@@ -8,7 +8,7 @@ import warnings
 from collections import Counter
 from functools import cached_property
 from pathlib import Path
-from typing import cast
+from typing import Union, cast
 
 import numpy as np
 import requests
@@ -21,6 +21,7 @@ from pulser.register.base_register import BaseRegister
 from pulser_simulation import QutipEmulator
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Batch, BatchResult, Job, Observable, Result, Schedule, Term
+from qat.core.contexts import QPUContext
 from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
 from scipy.spatial.distance import cdist
@@ -28,6 +29,8 @@ from scipy.spatial.distance import cdist
 from pulser_myqlm.myqlmtools import are_equivalent_schedules
 
 DEFAULT_NUMBER_OF_SHOTS = 2000
+
+QPUTYPE = Union[None, CommonQPU, QPUContext]
 
 with open(Path(__file__).parent / "temp_device.json", "r", encoding="utf-8") as f:
     TEMP_DEVICE = cast(Device, deserialize_device(f.read()))
@@ -104,10 +107,10 @@ class IsingAQPU(QPUHandler):
 
     device: BaseDevice
     register: BaseRegister
-    qpu: CommonQPU | None
+    qpu: QPUTYPE
 
     def __init__(
-        self, device: BaseDevice, register: BaseRegister, qpu: CommonQPU | None = None
+        self, device: BaseDevice, register: BaseRegister, qpu: QPUTYPE = None
     ) -> None:
         super().__init__()
         for test_value in [
@@ -125,7 +128,7 @@ class IsingAQPU(QPUHandler):
         self.set_qpu(qpu)
 
     @classmethod
-    def from_sequence(cls, seq: Sequence, qpu: CommonQPU | None = None) -> IsingAQPU:
+    def from_sequence(cls, seq: Sequence, qpu: QPUTYPE = None) -> IsingAQPU:
         """Creates an IsingAQPU with the device, register of a Sequence."""
         return cls(seq.device, seq.register, qpu)
 
@@ -146,7 +149,7 @@ class IsingAQPU(QPUHandler):
                 """
             )
 
-    def set_qpu(self, qpu: CommonQPU | None = None) -> None:
+    def set_qpu(self, qpu: QPUTYPE = None) -> None:
         """Set the QPU to use to simulate jobs.
 
         Args:
@@ -154,10 +157,12 @@ class IsingAQPU(QPUHandler):
                 associated to the Job. Otherwise, it can be a QPU running locally or a
                 RemoteQPU to run the Job on a server.
         """
-        if qpu is not None and not isinstance(qpu, CommonQPU):
+        if qpu is not None and not (
+            isinstance(qpu, CommonQPU) or isinstance(qpu, QPUContext)
+        ):
             raise TypeError(
-                "The provided qpu must be None or a `CommonQPU` instance (QPUHandler,"
-                " RemoteQPU, ...)."
+                "The provided qpu must be None, a `CommonQPU` instance (QPUHandler,"
+                " RemoteQPU, ...) or a QPUContext (from qlmaas.qpus)."
             )
         self.qpu = qpu
 
