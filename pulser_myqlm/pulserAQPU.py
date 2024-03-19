@@ -28,7 +28,7 @@ from scipy.spatial.distance import cdist
 
 DEFAULT_NUMBER_OF_SHOTS = 2000
 
-QPUTYPE = Union[None, CommonQPU, QPUContext]
+QPUType = Union[None, CommonQPU, QPUContext]
 
 with open(Path(__file__).parent / "temp_device.json", "r", encoding="utf-8") as f:
     TEMP_DEVICE = cast(Device, deserialize_device(f.read()))
@@ -105,10 +105,10 @@ class IsingAQPU(QPUHandler):
 
     device: BaseDevice
     register: BaseRegister
-    qpu: QPUTYPE
+    qpu: QPUType
 
     def __init__(
-        self, device: BaseDevice, register: BaseRegister, qpu: QPUTYPE = None
+        self, device: BaseDevice, register: BaseRegister, qpu: QPUType = None
     ) -> None:
         super().__init__()
         for test_value in [
@@ -126,7 +126,7 @@ class IsingAQPU(QPUHandler):
         self.set_qpu(qpu)
 
     @classmethod
-    def from_sequence(cls, seq: Sequence, qpu: QPUTYPE = None) -> IsingAQPU:
+    def from_sequence(cls, seq: Sequence, qpu: QPUType = None) -> IsingAQPU:
         """Creates an IsingAQPU with the device, register of a Sequence."""
         return cls(seq.device, seq.register, qpu)
 
@@ -147,7 +147,7 @@ class IsingAQPU(QPUHandler):
                 """
             )
 
-    def set_qpu(self, qpu: QPUTYPE = None) -> None:
+    def set_qpu(self, qpu: QPUType = None) -> None:
         """Set the QPU to use to simulate jobs.
 
         Args:
