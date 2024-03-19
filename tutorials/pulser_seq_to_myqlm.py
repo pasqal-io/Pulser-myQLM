@@ -2,21 +2,22 @@
 
 import numpy as np
 from pulser import Pulse, Register, Sequence
-from pulser.devices import MockDevice
+from pulser.devices import AnalogDevice
 from pulser.waveforms import CustomWaveform
 
 from pulser_myqlm import IsingAQPU
 
 # Pulser Sequence (find more at https://pulser.readthedocs.io/)
 
-device = MockDevice
-register = Register.square(2, 4, None)
+device = AnalogDevice
+register = Register.square(2, 5, None)
 seq = Sequence(register, device)
 seq.declare_channel("ryd_glob", "rydberg_global")
+duration = 100
 seq.add(
     Pulse(
-        CustomWaveform([ti for ti in range(16)]),
-        CustomWaveform([1 - ti for ti in range(16)]),
+        CustomWaveform([ti / duration for ti in range(duration)]),
+        CustomWaveform([1 - ti / duration for ti in range(duration)]),
         0,
     ),
     "ryd_glob",
