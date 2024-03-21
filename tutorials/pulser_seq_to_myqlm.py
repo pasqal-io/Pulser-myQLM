@@ -26,11 +26,12 @@ seq.add(Pulse.ConstantPulse(20, 1, 0, 0), "ryd_glob")
 seq.add(Pulse.ConstantPulse(20, 1, 0, np.pi / 2), "ryd_glob")
 
 # Convert the Sequence to a Job
-job = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000, modulation=True)
+job = IsingAQPU.convert_sequence_to_job(seq, nbshots=0, modulation=True)
 
 # Simulate the Job using pulser_simulation
 aqpu = IsingAQPU.from_sequence(seq, qpu=None)
 results = aqpu.submit(job)
+print("Results obtained with pulser-simulation: ", results)
 
 # Simulate the Job using AnalogQPU
 try:
@@ -41,3 +42,6 @@ try:
     results = aqpu.submit(job)
 except ImportError:
     print("Can't import AnalogQPU, check connection to Qaptiva Access.")
+
+# Once the results have run on AnalogQPU
+print("Results obtained with AnalogQPU: ", results.get_result())
