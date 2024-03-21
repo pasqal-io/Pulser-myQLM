@@ -45,7 +45,5 @@ try:
 except ImportError:
     print("Can't import AnalogQPU, check connection to Qaptiva Access.")
 
-print("Waiting for the Job to run on AnalogQPU")
-while results.ending_date is None:
-    time.sleep(1)
+# Once the results have run on AnalogQPU
 print("Results obtained with AnalogQPU: ", results.get_result())
