@@ -1,6 +1,7 @@
 """Example of a conversion of a Pulser Sequence into MyQLM."""
 
 import numpy as np
+import time
 from pulser import Pulse, Register, Sequence
 from pulser.devices import AnalogDevice
 from pulser.waveforms import CustomWaveform
@@ -43,4 +44,6 @@ try:
 except ImportError:
     print("Can't import AnalogQPU, check connection to Qaptiva Access.")
 
+while results.ending_date is None:
+    time.wait(1)
 print("Results obtained with AnalogQPU: ", results.get_result())
