@@ -1,7 +1,8 @@
 """Example of a conversion of a Pulser Sequence into MyQLM."""
 
-import numpy as np
 import time
+
+import numpy as np
 from pulser import Pulse, Register, Sequence
 from pulser.devices import AnalogDevice
 from pulser.waveforms import CustomWaveform
