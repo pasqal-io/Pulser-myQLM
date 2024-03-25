@@ -21,14 +21,14 @@ from pulser.register.base_register import BaseRegister
 from pulser_simulation import QutipEmulator
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Batch, BatchResult, Job, Observable, Result, Schedule, Term
-from qat.core.contexts import QPUContext
 from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
+from qat.qlmaas.qpus import QLMaaSQPU
 from scipy.spatial.distance import cdist
 
 DEFAULT_NUMBER_OF_SHOTS = 2000
 
-QPUType = Union[None, CommonQPU, QPUContext]
+QPUType = Union[None, CommonQPU, QLMaaSQPU]
 
 with open(Path(__file__).parent / "temp_device.json", "r", encoding="utf-8") as f:
     TEMP_DEVICE = cast(Device, deserialize_device(f.read()))
@@ -156,11 +156,11 @@ class IsingAQPU(QPUHandler):
                 RemoteQPU to run the Job on a server.
         """
         if qpu is not None and not (
-            isinstance(qpu, CommonQPU) or isinstance(qpu, QPUContext)
+            isinstance(qpu, CommonQPU) or isinstance(qpu, QLMaaSQPU)
         ):
             raise TypeError(
                 "The provided qpu must be None, a `CommonQPU` instance (QPUHandler,"
-                " RemoteQPU, ...) or a QPUContext (from qlmaas.qpus)."
+                " RemoteQPU, ...) or a QLMaaSQPU (from qlmaas.qpus)."
             )
         self.qpu = qpu
 
