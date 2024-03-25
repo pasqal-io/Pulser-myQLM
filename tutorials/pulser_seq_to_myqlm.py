@@ -43,5 +43,5 @@ try:
 except ImportError:
     print("Can't import AnalogQPU, check connection to Qaptiva Access.")
 
-# Once the results have run on AnalogQPU
-print("Results obtained with AnalogQPU: ", results.get_result())
+# Display the results once they have run on AnalogQPU
+print("Results obtained with AnalogQPU: ", results.join())
