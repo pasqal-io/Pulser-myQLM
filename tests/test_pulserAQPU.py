@@ -21,7 +21,7 @@ from qat.core.variables import ArithExpression, Symbol, cos, sin
 from qat.lang.AQASM import CCNOT, Program
 from qat.qpus import PyLinalg
 
-from pulser_myqlm.myqlmtools import are_equivalent_schedules
+from pulser_myqlm.myqlmtools import are_equivalent_schedules, sample_schedule
 from pulser_myqlm.pulserAQPU import TEMP_DEVICE, FresnelQPU, IsingAQPU
 
 
@@ -308,12 +308,12 @@ def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
 
 
 @pytest.fixture
-def schedule_seq(test_ising_qpu, omega_t, delta_t):
-    t0 = 16  # in ns
+def failing_schedule_seq(test_ising_qpu, omega_t, delta_t):
+    t0 = 16 / 1000  # in µs
     H0 = test_ising_qpu.hamiltonian(omega_t, delta_t, 0)
-    t1 = 20  # in ns
+    t1 = 20 / 1000  # in µs
     H1 = test_ising_qpu.hamiltonian(1, 0, 0)
-    t2 = 20  # in ns
+    t2 = 20 / 1000  # in µs
     H2 = test_ising_qpu.hamiltonian(1, 0, np.pi / 2)
 
     schedule0 = Schedule(drive=[(1, H0)], tmax=t0)
@@ -327,16 +327,61 @@ def schedule_seq(test_ising_qpu, omega_t, delta_t):
 
     seq.add(
         Pulse(
-            CustomWaveform([omega_t(t=ti) for ti in range(t0)]),
+            CustomWaveform([omega_t(t=ti / 1000) for ti in range(int(t0 * 1000))]),
             CustomWaveform(
-                [delta_t(t=ti, u=0) for ti in range(t0)]
+                [delta_t(t=ti / 1000, u=0) for ti in range(int(t0 * 1000))]
             ),  # no parametrized sequence for the moment
             0,
         ),
         "ryd_glob",
     )
-    seq.add(Pulse.ConstantPulse(t1, 1, 0, 0), "ryd_glob", protocol="no-delay")
-    seq.add(Pulse.ConstantPulse(t2, 1, 0, np.pi / 2), "ryd_glob", protocol="no-delay")
+    seq.add(
+        Pulse.ConstantPulse(int(t1 * 1000), 1, 0, 0), "ryd_glob", protocol="no-delay"
+    )
+    seq.add(
+        Pulse.ConstantPulse(int(t2 * 1000), 1, 0, np.pi / 2),
+        "ryd_glob",
+        protocol="no-delay",
+    )
+    return (schedule, seq)
+
+
+@pytest.fixture
+def schedule_seq(test_ising_qpu, omega_t, delta_t):
+    t0 = 16 / 1000  # in µs
+    H0 = test_ising_qpu.hamiltonian(omega_t, delta_t, 0)
+    t1 = 24 / 1000  # in µs
+    H1 = test_ising_qpu.hamiltonian(1, 0, 0)
+    t2 = 20 / 1000  # in µs
+    H2 = test_ising_qpu.hamiltonian(1, 0, np.pi / 2)
+
+    schedule0 = Schedule(drive=[(1, H0)], tmax=t0)
+    schedule1 = Schedule(drive=[(1, H1)], tmax=t1)
+    schedule2 = Schedule(drive=[(1, H2)], tmax=t2)
+    schedule = schedule0 | schedule1 | schedule2
+
+    # Which is equivalent to having defined pulses using a Sequence
+    seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
+    seq.declare_channel("ryd_glob", "rydberg_global")
+
+    seq.add(
+        Pulse(
+            CustomWaveform([omega_t(t=ti / 1000) for ti in range(int(t0 * 1000))]),
+            CustomWaveform(
+                [delta_t(t=ti / 1000, u=0) for ti in range(int(t0 * 1000))]
+            ),  # no parametrized sequence for the moment
+            0,
+        ),
+        "ryd_glob",
+    )
+    seq.add(
+        Pulse.ConstantPulse(int(t1 * 1000), 1, 0, 0), "ryd_glob", protocol="no-delay"
+    )
+    seq.add(
+        Pulse.ConstantPulse(int(t2 * 1000), 1, 0, np.pi / 2),
+        "ryd_glob",
+        protocol="no-delay",
+    )
     return (schedule, seq)
 
 
@@ -345,6 +390,31 @@ def test_convert_sequence_to_schedule(schedule_seq):
     schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq)
     assert isinstance(schedule_from_seq, Schedule)
     assert are_equivalent_schedules(schedule(u=0), schedule_from_seq)
+
+
+def test_convert_sequence_with_failing_schedule(failing_schedule_seq):
+    """The conversion is correct, but the schedule fails for t=36."""
+    schedule, seq = failing_schedule_seq
+    schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq)
+    assert isinstance(schedule_from_seq, Schedule)
+    # Schedules are not equivalent
+    assert not are_equivalent_schedules(schedule(u=0), schedule_from_seq)
+    # Sample the schedules
+    sample_sch_from_seq = sample_schedule(schedule_from_seq)
+    sample_sch = sample_schedule(schedule(u=0))
+    # Extract the value at t=36 ns
+    schedule_from_seq_at_36 = sample_sch_from_seq.pop(36)
+    schedule_at_36 = sample_sch.pop(36)
+
+    # The schedules are equivalent outside t=36 ns
+    assert sample_sch_from_seq == sample_sch
+    # In schedule_from_seq, the value at t=36 matches the values of the constant pulse
+    # happening after t=36
+    assert schedule_from_seq_at_36 == sample_sch_from_seq[-1]
+    # In schedule, the value at t=36 matches the values of the constant pulse
+    # happening before t=36
+    assert schedule_at_36 != sample_sch_from_seq[-1]
+    assert schedule_at_36 == sample_sch_from_seq[16]
 
 
 @pytest.mark.parametrize(

@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from qat.core import Observable, Schedule, Term
 from qat.core.variables import ArithExpression, heaviside
@@ -9,13 +11,13 @@ schedule1 = Schedule(
         (1.0, Observable(1, pauli_terms=[Term(1.0, "Z", [0])])),
         (1.0, Observable(1, pauli_terms=[Term(1.0, "X", [0])])),
     ],
-    tmax=10,
+    tmax=10 / 1000,  # in µs
     tname="t",
     gamma_t=None,
 )
 schedule2 = Schedule(
     drive=[(2.0, Observable(1, pauli_terms=[Term(1.0, "Y", [0])]))],
-    tmax=20,
+    tmax=20 / 1000,  # in µs
     tname="t",
     gamma_t=None,
 )
@@ -24,20 +26,31 @@ schedule2 = Schedule(
 def test_sample_schedule(t_variable):
     # Test empty schedule.
     assert sample_schedule(Schedule()) == []
-    # Test non-int tmax.
+    # Test tmax not being an integer number of ns
     with pytest.raises(
         TypeError,
-        match="tmax should be an integer.",
+        match=re.escape("tmax*1000 should be an integer."),
     ):
         sample_schedule(
             Schedule(
-                drive=[(1, Observable(2, pauli_terms=[Term(2.0, "X", [0])]))], tmax=10.0
+                drive=[(1, Observable(2, pauli_terms=[Term(2.0, "X", [0])]))],
+                tmax=10.1 / 1000,
+            )
+        )
+    with pytest.raises(
+        TypeError,
+        match=re.escape("tmax*1000 should be an integer."),
+    ):
+        sample_schedule(
+            Schedule(
+                drive=[(1, Observable(2, pauli_terms=[Term(2.0, "X", [0])]))],
+                tmax=10.9 / 1000,
             )
         )
     # Test variable-independent schedule.
     tmax = 2
     schedule = Schedule(
-        drive=[(1, Observable(2, pauli_terms=[Term(2.0, "X", [0])]))], tmax=tmax
+        drive=[(1, Observable(2, pauli_terms=[Term(2.0, "X", [0])]))], tmax=tmax / 1000
     )
     assert sample_schedule(schedule) == [
         Observable(2, pauli_terms=[Term(2.0, "X", [0])]) for _ in range(tmax)
@@ -53,7 +66,7 @@ def test_sample_schedule(t_variable):
     assert [
         sample_variable_schedule[ti].terms[0]._coeff.get_value()
         for ti in range(1, tmax)
-    ] == [2.0 * ti for ti in range(1, tmax)]
+    ] == [2.0 * ti / 1000 for ti in range(1, tmax)]
     assert [sample_variable_schedule[ti].terms[0].op for ti in range(1, tmax)] == [
         "X"
     ] * (tmax - 1)
@@ -73,13 +86,13 @@ def test_sample_schedule(t_variable):
 
 
 def test_equivalent_schedules(t_variable, delta_t):
-    t0 = 16  # in ns
+    t0 = 16 / 1000  # in µs
     H0 = t_variable * Observable(
         2, pauli_terms=[Term(1.0, "X", [0])]
     ) + delta_t * Observable(2, pauli_terms=[Term(1.0, "Z", [1])])
-    t1 = 20  # in ns
+    t1 = 20 / 1000  # in µs
     H1 = Observable(2, pauli_terms=[Term(2.0, "X", [0])])
-    t2 = 20  # in ns
+    t2 = 20 / 1000  # in µs
     H2 = Observable(2, pauli_terms=[Term(1.0, "YY", [0, 1])])
 
     schedule0 = Schedule(drive=[(1, H0)], tmax=t0)

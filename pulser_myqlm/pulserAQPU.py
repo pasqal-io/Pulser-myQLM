@@ -267,10 +267,11 @@ class IsingAQPU(QPUHandler):
 
         For a Sequence with max one declared channel, that channel being Rydberg.Global.
         Samples the Sequence, eventually modulates it using its modulation bandwidth.
-        Outputs a time-dependent Ising Hamiltonian in a Schedule.
+        Outputs a time-dependent Ising Hamiltonian in rad/µs in a Schedule. The time in
+        the Hamiltonian is defined in µs. The Hamiltonian is defined every 0.001µs.
 
         Args:
-            seq: The Pulser Sequence to convert.
+            seq: The Pulser Sequence to convert (times are defined in ns).
             modulation: Whether the Schedule should contain modulated samples or not.
                 Modulation is performed using the modulation bandwidth of the channel,
                 it is used in simulations to model more accurately the behaviour of the
@@ -297,19 +298,18 @@ class IsingAQPU(QPUHandler):
         ch_name = list(seq.declared_channels.keys())[0]
         # Sample the sequence
         ch_sample = sampler.sample(seq, modulation).channel_samples[ch_name]
-        tmax = ch_sample.duration
-        t = Variable("t")
+        t = Variable("t")  # in µs
         # Convert the samples of amplitude, detuning and phase to ArithExpression.
-        omega_t = get_item(list(ch_sample.amp), t)
-        delta_t = get_item(list(ch_sample.det), t)
-        phi_t = get_item(list(ch_sample.phase), t)
+        omega_t = get_item(list(ch_sample.amp), t * 1000)  # samples are every ns
+        delta_t = get_item(list(ch_sample.det), t * 1000)  # samples are every ns
+        phi_t = get_item(list(ch_sample.phase), t * 1000)  # samples are every ns
         # Drive values are Ising hamiltonian at each time-step
         sch = Schedule(
             [
                 (1, qpu.pulse_observables(omega_t, delta_t, phi_t)),
                 (1, qpu.interaction_observables),
             ],
-            tmax=tmax,
+            tmax=ch_sample.duration / 1000,  # in µs
         )
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", "Register serialization", UserWarning)
@@ -329,7 +329,8 @@ class IsingAQPU(QPUHandler):
 
         For a Sequence with max one declared channel, that channel being Rydberg.Global.
         Samples the Sequence, eventually modulates it using its modulation bandwidth.
-        Outputs a Job with a time-dependent Ising Hamiltonian in its Schedule.
+        Outputs a time-dependent Ising Hamiltonian in rad/µs in a Schedule. The time in
+        the Hamiltonian is defined in µs. The Hamiltonian is defined every 0.001µs.
 
         Args:
             seq: The Pulser Sequence to convert.
