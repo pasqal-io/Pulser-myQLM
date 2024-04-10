@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from collections import Counter
 from threading import Thread
@@ -356,11 +358,11 @@ def test_convert_sequence_to_schedule(schedule_seq):
         ),
         (
             {"n_qubits": 1, "n_samples": 1000},
-            "State 4 is incompatible with number of qubits declared 1",
+            "State |000> is incompatible with number of qubits declared 1",
         ),
         (
             {"n_qubits": 4, "n_samples": 999},
-            "Probability associated with state 0 does not",
+            "Probability associated with state |000> does not",
         ),
     ],
 )
@@ -455,13 +457,16 @@ def deploy_qpu(qpu: QPUHandler, port: int) -> None:
     qpu.serve(port, "localhost")
 
 
-def compare_results_raw_data(results1: list, results2: list) -> None:
+def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
     """Check that two lists of samples (as Result.raw_data) are the same."""
     for i, sample1 in enumerate(results1):
-        assert (sample1.probability, sample1._state) == (
-            results2[i].probability,
-            results2[i]._state,
+        res_sample1 = (sample1.probability, sample1._state, sample1.state.__str__())
+        res_sample2 = (
+            results2[i][0].probability,
+            results2[i][0]._state,
+            results2[i][1],
         )
+        assert res_sample1 == res_sample2
 
 
 @pytest.mark.parametrize("qpu", [None, "fresnel", "remote"])
@@ -495,8 +500,8 @@ def test_run_sequence(schedule_seq, qpu):
     assert job_from_seq.nbshots == 1000
     result = aqpu.submit(job_from_seq)
     exp_result = [
-        Sample(probability=0.999, state=0),
-        Sample(probability=0.001, state=4),
+        (Sample(probability=0.999, state=0), "|000>"),
+        (Sample(probability=0.001, state=4), "|100>"),
     ]
     compare_results_raw_data(result.raw_data, exp_result)
 
@@ -506,8 +511,8 @@ def test_run_sequence(schedule_seq, qpu):
     assert not job_from_seq.nbshots
     result_schedule = aqpu.submit(job_from_seq)
     exp_result_schedule = [
-        Sample(probability=0.9995, state=0),
-        Sample(probability=0.0005, state=1),
+        (Sample(probability=0.9995, state=0), "|000>"),
+        (Sample(probability=0.0005, state=1), "|001>"),
     ]
     compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
 
@@ -518,9 +523,9 @@ def test_run_sequence(schedule_seq, qpu):
     empty_job.schedule = empty_schedule
     result_empty_sch = aqpu.submit(empty_job)
     exp_result_empty_sch = [
-        Sample(probability=0.999, state=0),
-        Sample(probability=0.0005, state=1),
-        Sample(probability=0.0005, state=4),
+        (Sample(probability=0.999, state=0), "|000>"),
+        (Sample(probability=0.0005, state=1), "|001>"),
+        (Sample(probability=0.0005, state=4), "|100>"),
     ]
     compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
 
@@ -673,8 +678,8 @@ def test_job_simulation(mock_get, mock_post, base_uri, device, schedule_seq):
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
     result = fresnel_qpu.submit(job_from_seq)
     exp_result = [
-        Sample(probability=0.999, state=0),
-        Sample(probability=0.001, state=4),
+        (Sample(probability=0.999, state=0), "|000>"),
+        (Sample(probability=0.001, state=4), "|100>"),
     ]
     compare_results_raw_data(result.raw_data, exp_result)
 

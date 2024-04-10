@@ -23,6 +23,7 @@ from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Batch, BatchResult, Job, Observable, Result, Schedule, Term
 from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
+from qat.lang.AQASM.bits import QRegister
 from qat.qlmaas.qpus import QLMaaSQPU
 from scipy.spatial.distance import cdist
 
@@ -366,6 +367,9 @@ class IsingAQPU(QPUHandler):
         myqlm_result = Result(meta_data=meta_data)
         for state, counts in result_samples.items():
             myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
+        myqlm_result.wrap_samples(
+            [QRegister(0, length=int(meta_data.get("n_qubits", 0)))]
+        )
         return myqlm_result
 
     @staticmethod
@@ -415,13 +419,13 @@ class IsingAQPU(QPUHandler):
         for sample in myqlm_result.raw_data:
             if len(sample.state.bitstring) > n_qubits:
                 raise ValueError(
-                    f"State {sample.state.int} is incompatible with number of qubits"
+                    f"State {sample.state} is incompatible with number of qubits"
                     f" declared {n_qubits}."
                 )
             counts = sample.probability * n_samples
             if not np.isclose(counts % 1, 0, rtol=1e-5):
                 raise ValueError(
-                    f"Probability associated with state {sample.state.int} does not "
+                    f"Probability associated with state {sample.state} does not "
                     f"make an integer count for n_samples: {n_samples}."
                 )
             samples[sample.state.bitstring.zfill(n_qubits)] = int(counts)
