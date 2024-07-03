@@ -26,6 +26,17 @@ def deploy_qpu(qpu: QPUHandler, port: int) -> None:
     """Deploys the QPU on a server on a port at IP 127.0.0.1."""
     qpu.serve(port, "localhost")
 
+def get_remote_qpu(port: int) -> RemoteQPU:
+    tries = 0
+    while tries < 10:
+        try:
+            return RemoteQPU(port, "localhost")
+        except TTransportException as e:
+            tries += 1
+            sleep(1)
+            error = e
+    raise error
+
 
 def get_remote_qpu(port: int) -> RemoteQPU:
     tries = 0
@@ -50,6 +61,7 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
         )
         assert res_sample1 == res_sample2
 
+port = 1190
 
 @pytest.fixture
 def port() -> int:
@@ -219,6 +231,8 @@ def mocked_requests_post_fail(*args, **kwargs):
             return MockResponse(None, 400)
         return MockResponse({"data": {"status": "ERROR", "uid": 1}}, 500)
     return MockResponse(None, 404)
+
+base_uris = ["http://fresneldevice/api", None]
 
 
 base_uris = ["http://fresneldevice/api", None]
