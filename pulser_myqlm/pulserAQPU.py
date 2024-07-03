@@ -25,7 +25,6 @@ from scipy.spatial.distance import cdist
 
 from pulser_myqlm.constants import DEFAULT_NUMBER_OF_SHOTS
 
-
 QPUType = Union[None, CommonQPU, QLMaaSQPU]
 
 
