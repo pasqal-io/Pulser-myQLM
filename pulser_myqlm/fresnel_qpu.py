@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import json
 import time
-import requests
 import warnings
 from typing import cast
 
+import requests
 from pulser.devices._device_datacls import Device
 from qat.comm.exceptions.ttypes import ErrorType, QPUException
 from qat.core import Job, Result
 from qat.core.qpu import QPUHandler
 
 from pulser_myqlm.constants import DEFAULT_NUMBER_OF_SHOTS, TEMP_DEVICE
-from pulser_myqlm.pulserAQPU import deserialize_other, IsingAQPU, simulate_seq
+from pulser_myqlm.pulserAQPU import IsingAQPU, deserialize_other, simulate_seq
 
 
 QPU_POLLING_INTERVAL_SECONDS = 5
