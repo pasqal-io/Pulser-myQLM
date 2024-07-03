@@ -16,7 +16,6 @@ from qat.core.qpu import QPUHandler
 from pulser_myqlm.constants import DEFAULT_NUMBER_OF_SHOTS, TEMP_DEVICE
 from pulser_myqlm.pulserAQPU import IsingAQPU, deserialize_other, simulate_seq
 
-
 QPU_POLLING_INTERVAL_SECONDS = 5
 
 
