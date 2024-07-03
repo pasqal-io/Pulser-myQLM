@@ -39,6 +39,7 @@ def delta_t(t_variable, u_variable):
 
 @pytest.fixture
 def failing_schedule_seq(test_ising_qpu, omega_t, delta_t):
+    """(Schedule, Sequence) who are not equivalent due to MyQLM's get_item."""
     t0 = 16 / 1000  # in µs
     H0 = test_ising_qpu.hamiltonian(omega_t, delta_t, 0)
     t1 = 20 / 1000  # in µs
@@ -78,6 +79,7 @@ def failing_schedule_seq(test_ising_qpu, omega_t, delta_t):
 
 @pytest.fixture
 def schedule_seq(test_ising_qpu, omega_t, delta_t):
+    """A tuple of (Schedule, Sequence) who are equivalent."""
     t0 = 16 / 1000  # in µs
     H0 = test_ising_qpu.hamiltonian(omega_t, delta_t, 0)
     t1 = 24 / 1000  # in µs

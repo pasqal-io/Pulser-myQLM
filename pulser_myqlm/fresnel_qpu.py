@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import json
 import time
+import requests
 import warnings
 from typing import cast
 
-import requests
 from pulser.devices._device_datacls import Device
-from qat.comm.exceptions.ttypes import QPUException
+from qat.comm.exceptions.ttypes import ErrorType, QPUException
 from qat.core import Job, Result
 from qat.core.qpu import QPUHandler
 
 from pulser_myqlm.constants import DEFAULT_NUMBER_OF_SHOTS, TEMP_DEVICE
-from pulser_myqlm.pulserAQPU import IsingAQPU, deserialize_other, simulate_seq
+from pulser_myqlm.pulserAQPU import deserialize_other, IsingAQPU, simulate_seq
+
 
 QPU_POLLING_INTERVAL_SECONDS = 5
 
@@ -102,11 +103,17 @@ class FresnelQPU(QPUHandler):
                 Sequence must be compatible with FresnelDevice.
         """
         if job.schedule is None:
-            raise QPUException("FresnelQPU can only execute a schedule job.")
+            raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
+                "FresnelQPU can only execute a schedule job."
+            )
         try:
             other_dict = deserialize_other(job.schedule._other)
         except ValueError as e:
-            raise QPUException("Failed at deserializing Job.Schedule._other") from e
+            raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
+                "Failed at deserializing Job.Schedule._other"
+            ) from e
         seq = other_dict["seq"]
         # Validate that Sequence is compatible with FresnelDevice
         current_device = self.device
@@ -115,11 +122,13 @@ class FresnelQPU(QPUHandler):
                 seq = seq.switch_device(current_device, strict=True)
         except Exception as e:
             raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
                 "The Sequence in job.schedule._other['abstr_seq'] is not compatible "
                 "with the properties of the QPU (see FresnelQPU.device)."
             ) from e
         if not current_device.register_is_from_calibrated_layout(seq.register):
             raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
                 "The Register of the Sequence in job.schedule._other['abstr_seq'] must "
                 "be defined from a layout in the calibrated layouts of FresnelDevice."
             )
@@ -137,7 +146,9 @@ class FresnelQPU(QPUHandler):
             return myqlm_result
         response = requests.post(self.base_uri + "/jobs", json=payload)
         if response.status_code != 200:
-            raise QPUException("Could not create job", response.text)
+            raise QPUException(
+                ErrorType.ABORT, message="Could not create job: " + response.text
+            )
         job_response = response.json()["data"]
         print(f"Job #{job_response['uid']} created, status: {job_response['status']}")
 
@@ -153,6 +164,7 @@ class FresnelQPU(QPUHandler):
         # Check that the job submission went well
         if response.status_code != 200 or job_response["status"] == "ERROR":
             raise QPUException(
+                ErrorType.NONERESULT,
                 "An error occured, check locally the Sequence before submitting or "
                 "contact the support."
             )
