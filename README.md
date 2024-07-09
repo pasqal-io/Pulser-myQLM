@@ -4,16 +4,33 @@ Pulser-MyQLM is an extension of Pulser and myqlm qat.core for the integration of
 
 ## Installation
 
-To install ``pulser`` and ``myqlm``, simply clone this repository, go to its root folder and run
+To install the ``pulser-myqlm`` package, simply clone this repository, go to its root folder and run
 
 ```bash
 pip install -e .
 ```
+or 
 
-If you also wish to install the development requirements (optional), follow up with:
+```bash
+python setup.py install
+```
+
+This will install ``pulser`` and ``myqlm``. If you also wish to install the development requirements (optional), follow up with:
 
 ```bash
 pip install -r dev_requirements.txt
+```
+
+or
+
+```bash
+python setup.py install easy_install "pulser-myqlm[dev]"
+```
+
+If, among the development requirements, you only wish to install the test requirements, do:
+
+```bash
+python setup.py install easy_install "pulser-myqlm[test_dev]"
 ```
 
 ## Continuous Integration Requirements
@@ -22,6 +39,12 @@ We enforce some continuous integration standards. Make sure you follow them, oth
 
 ```shell
 pip install -r dev_requirements.txt
+```
+
+or
+
+```bash
+python setup.py install easy_install "pulser-myqlm[dev]"
 ```
 
 - **Tests**: We use [`pytest`](https://docs.pytest.org/en/latest/) to run unit tests on our code. If your changes break existing tests, you'll have to update these tests accordingly. Additionally, we aim for 100% coverage over our code. Try to cover all the new lines of code with simple tests, which should be placed in the `tests/` folder. To run all tests and check coverage, run:

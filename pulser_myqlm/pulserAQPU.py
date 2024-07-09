@@ -15,7 +15,7 @@ from pulser.devices._device_datacls import COORD_PRECISION, BaseDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.register.base_register import BaseRegister
 from pulser_simulation import QutipEmulator
-from qat.comm.exceptions.ttypes import QPUException
+from qat.comm.exceptions.ttypes import ErrorType, QPUException
 from qat.core import Batch, BatchResult, Job, Observable, Result, Schedule, Term
 from qat.core.qpu import CommonQPU, QPUHandler
 from qat.core.variables import ArithExpression, Variable, cos, get_item, sin
@@ -464,7 +464,10 @@ class IsingAQPU(QPUHandler):
                 " use the `submit` method instead."
             )
         if job.schedule is None:
-            raise QPUException("FresnelQPU can only execute a schedule job.")
+            raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
+                message="FresnelQPU can only execute a schedule job.",
+            )
         other_dict = deserialize_other(job.schedule._other)
         modulation = other_dict.get("modulation", False)
         return self.convert_samples_to_result(

@@ -39,6 +39,10 @@ with open(local_version_fpath, "w") as f:
 with open("requirements.txt") as f:
     requirements = f.read().splitlines()
 
+with open("dev_requirements.txt") as f:
+    dev_requirements = f.read().splitlines()
+test_requirements = [req for req in dev_requirements if "pytest" in req]
+
 description = "An extension to interface MyQLM with Pulser."
 
 setup(
@@ -46,6 +50,7 @@ setup(
     version=__version__,
     description=description,
     install_requires=requirements,
+    extras_require={"dev": dev_requirements, "test_dev": test_requirements},
     packages=find_packages(),
     include_package_data=True,
     author="Pasqal Quantum Solutions / Pulser Development Team",
