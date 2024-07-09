@@ -18,25 +18,12 @@ from qat.qpus import PyLinalg, RemoteQPU
 from thrift.transport.TTransport import TTransportException
 
 from pulser_myqlm.constants import TEMP_DEVICE
-from pulser_myqlm.fresnel_qpu import FresnelQPU
-from pulser_myqlm.pulserAQPU import IsingAQPU
+from pulser_myqlm.fresnel_qpu import FresnelQPU, IsingAQPU
 
 
 def deploy_qpu(qpu: QPUHandler, port: int) -> None:
     """Deploys the QPU on a server on a port at IP 127.0.0.1."""
     qpu.serve(port, "localhost")
-
-
-def get_remote_qpu(port: int) -> RemoteQPU:
-    tries = 0
-    while tries < 10:
-        try:
-            return RemoteQPU(port, "localhost")
-        except TTransportException as e:
-            tries += 1
-            sleep(1)
-            error = e
-    raise error
 
 
 def get_remote_qpu(port: int) -> RemoteQPU:
@@ -67,14 +54,9 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
 def port() -> int:
     return 1190
 
-@pytest.fixture
-def port() -> int:
-    return 1190
 
-
-@pytest.mark.parametrize("qpu", [None, "fresnel", "remote"])
 @pytest.mark.parametrize("qpu", [None, "local", "remote"])
-def test_run_sequence(schedule_seq, qpu):
+def test_run_sequence(schedule_seq, qpu, port: int):
     """Test simulation of a Sequence using pulser-simulation."""
     np.random.seed(123)
     schedule, seq = schedule_seq
@@ -84,7 +66,7 @@ def test_run_sequence(schedule_seq, qpu):
         # pulser-simulation in FresnelQPU is used
         sim_qpu = FresnelQPU(None)
         assert sim_qpu.is_operational
-        sim_qpu.check_system()
+        sim_qpu.poll_system()
     if qpu == "remote":
         # pulser-simulation in a Remote FresnelQPU is used
         # Deploying a FresnelQPU on a remote server using serve
@@ -172,6 +154,7 @@ class MockResponse:
     def json(self):
         return self.json_data
 
+    @property
     def text(self):
         return ""
 
@@ -254,10 +237,10 @@ def _switch_seq_device(seq, device):
 
 
 @mock.patch(
-    "pulser_myqlm.pulserAQPU.requests.get", side_effect=mocked_requests_get_success
+    "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_success
 )
 @mock.patch(
-    "pulser_myqlm.pulserAQPU.requests.post",
+    "pulser_myqlm.fresnel_qpu.requests.post",
     side_effect=mocked_requests_post_success,
 )
 @pytest.mark.parametrize("base_uri", base_uris)
@@ -401,10 +384,10 @@ def test_non_operational_qpu(polling_interval, mock_get, mock_post, schedule_seq
 
 
 @mock.patch(
-    "pulser_myqlm.pulserAQPU.requests.get", side_effect=mocked_requests_get_success
+    "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_success
 )
 @mock.patch(
-    "pulser_myqlm.pulserAQPU.requests.post", side_effect=mocked_requests_post_fail
+    "pulser_myqlm.fresnel_qpu.requests.post", side_effect=mocked_requests_post_fail
 )
 @pytest.mark.parametrize("remote_fresnel", [False, True])
 def test_submission_error(mock_get, mock_post, remote_fresnel, schedule_seq, port: int):
@@ -425,16 +408,15 @@ def test_submission_error(mock_get, mock_post, remote_fresnel, schedule_seq, por
 
 
 @mock.patch(
-    "pulser_myqlm.pulserAQPU.requests.get", side_effect=mocked_requests_get_error
+    "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_error
 )
 @mock.patch(
-    "pulser_myqlm.pulserAQPU.requests.post",
+    "pulser_myqlm.fresnel_qpu.requests.post",
     side_effect=mocked_requests_post_success,
 )
 @pytest.mark.parametrize("remote_fresnel", [False, True])
-def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq):
+def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq, port: int):
     """Test a FresnelQPU interfacing a non-working QPU which could accept jobs."""
-    global port
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
     if remote_fresnel:
