@@ -108,7 +108,7 @@ def test_c6_interactions(test_ising_qpu):
 def test_interaction_observables(test_ising_qpu):
     """Test time-independent coeff in front of I, Z and ZZ operators."""
     assert test_ising_qpu.nbqubits == test_ising_qpu.interaction_observables.nbqbits
-    # Testing the coefficient in front of each operator
+    # Testing the coefficient in front of each operator.
     # Each c6 interaction adds c6_interaction / 4 to coeff in front of I
     assert np.isclose(
         test_ising_qpu.interaction_observables.constant_coeff,
