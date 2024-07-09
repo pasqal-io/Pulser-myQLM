@@ -52,7 +52,6 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
         assert res_sample1 == res_sample2
 
 
-
 @pytest.mark.parametrize("qpu", [None, "local", "remote"])
 def test_run_sequence(schedule_seq, qpu):
     """Test simulation of a Sequence using pulser-simulation."""
@@ -244,9 +243,7 @@ def _switch_seq_device(seq, device):
 )
 @pytest.mark.parametrize("base_uri", base_uris)
 @pytest.mark.parametrize("remote_fresnel", [False, True])
-def test_job_submission(
-    mock_get, mock_post, base_uri, remote_fresnel, schedule_seq
-):
+def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_seq):
     """Test submission of Jobs to a FresnelQPU interfacing a working QPU."""
     global port
     # Can't connect with a wrong address
