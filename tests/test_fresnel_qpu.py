@@ -61,7 +61,9 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
         )
         assert res_sample1 == res_sample2
 
-port = 1190
+@pytest.fixture
+def port() -> int:
+    return 1190
 
 @pytest.fixture
 def port() -> int:
