@@ -26,6 +26,7 @@ def deploy_qpu(qpu: QPUHandler, port: int) -> None:
     """Deploys the QPU on a server on a port at IP 127.0.0.1."""
     qpu.serve(port, "localhost")
 
+
 def get_remote_qpu(port: int) -> RemoteQPU:
     tries = 0
     while tries < 10:
@@ -49,9 +50,11 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
         )
         assert res_sample1 == res_sample2
 
+
 @pytest.fixture
 def port() -> int:
     return 1190
+
 
 @pytest.mark.parametrize("qpu", [None, "fresnel", "remote"])
 @pytest.mark.parametrize("qpu", [None, "local", "remote"])
@@ -217,6 +220,7 @@ def mocked_requests_post_fail(*args, **kwargs):
         return MockResponse({"data": {"status": "ERROR", "uid": 1}}, 500)
     return MockResponse(None, 404)
 
+
 base_uris = ["http://fresneldevice/api", None]
 
 
@@ -239,7 +243,9 @@ def _switch_seq_device(seq, device):
 )
 @pytest.mark.parametrize("base_uri", base_uris)
 @pytest.mark.parametrize("remote_fresnel", [False, True])
-def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_seq, port: int):
+def test_job_submission(
+    mock_get, mock_post, base_uri, remote_fresnel, schedule_seq, port: int
+):
     """Test submission of Jobs to a FresnelQPU interfacing a working QPU."""
     # Can't connect with a wrong address
     with pytest.raises(QPUException, match="Connection with API failed"):

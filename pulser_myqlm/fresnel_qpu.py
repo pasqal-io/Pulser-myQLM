@@ -104,15 +104,13 @@ class FresnelQPU(QPUHandler):
         """
         if job.schedule is None:
             raise QPUException(
-                ErrorType.NOT_SIMULATABLE,
-                "FresnelQPU can only execute a schedule job."
+                ErrorType.NOT_SIMULATABLE, "FresnelQPU can only execute a schedule job."
             )
         try:
             other_dict = deserialize_other(job.schedule._other)
         except ValueError as e:
             raise QPUException(
-                ErrorType.NOT_SIMULATABLE,
-                "Failed at deserializing Job.Schedule._other"
+                ErrorType.NOT_SIMULATABLE, "Failed at deserializing Job.Schedule._other"
             ) from e
         seq = other_dict["seq"]
         # Validate that Sequence is compatible with FresnelDevice
@@ -124,13 +122,13 @@ class FresnelQPU(QPUHandler):
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
                 "The Sequence in job.schedule._other['abstr_seq'] is not compatible "
-                "with the properties of the QPU (see FresnelQPU.device)."
+                "with the properties of the QPU (see FresnelQPU.device).",
             ) from e
         if not current_device.register_is_from_calibrated_layout(seq.register):
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
                 "The Register of the Sequence in job.schedule._other['abstr_seq'] must "
-                "be defined from a layout in the calibrated layouts of FresnelDevice."
+                "be defined from a layout in the calibrated layouts of FresnelDevice.",
             )
         modulation = other_dict.get("modulation", False)
         # Wait for system to be operational
@@ -166,7 +164,7 @@ class FresnelQPU(QPUHandler):
             raise QPUException(
                 ErrorType.NONERESULT,
                 "An error occured, check locally the Sequence before submitting or "
-                "contact the support."
+                "contact the support.",
             )
         assert job_response["status"] == "DONE"
         # Convert the output of the API into a MyQLM Result
