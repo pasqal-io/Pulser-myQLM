@@ -20,6 +20,8 @@ from thrift.transport.TTransport import TTransportException
 from pulser_myqlm.constants import TEMP_DEVICE
 from pulser_myqlm.fresnel_qpu import FresnelQPU, IsingAQPU
 
+port = 1190
+
 
 def deploy_qpu(qpu: QPUHandler, port: int) -> None:
     """Deploys the QPU on a server on a port at IP 127.0.0.1."""
@@ -50,14 +52,11 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
         assert res_sample1 == res_sample2
 
 
-@pytest.fixture
-def port() -> int:
-    return 1190
-
 
 @pytest.mark.parametrize("qpu", [None, "local", "remote"])
-def test_run_sequence(schedule_seq, qpu, port: int):
+def test_run_sequence(schedule_seq, qpu):
     """Test simulation of a Sequence using pulser-simulation."""
+    global port
     np.random.seed(123)
     schedule, seq = schedule_seq
     sim_qpu = None
@@ -246,9 +245,10 @@ def _switch_seq_device(seq, device):
 @pytest.mark.parametrize("base_uri", base_uris)
 @pytest.mark.parametrize("remote_fresnel", [False, True])
 def test_job_submission(
-    mock_get, mock_post, base_uri, remote_fresnel, schedule_seq, port: int
+    mock_get, mock_post, base_uri, remote_fresnel, schedule_seq
 ):
     """Test submission of Jobs to a FresnelQPU interfacing a working QPU."""
+    global port
     # Can't connect with a wrong address
     with pytest.raises(QPUException, match="Connection with API failed"):
         FresnelQPU(base_uri="")
@@ -390,8 +390,9 @@ def test_non_operational_qpu(polling_interval, mock_get, mock_post, schedule_seq
     "pulser_myqlm.fresnel_qpu.requests.post", side_effect=mocked_requests_post_fail
 )
 @pytest.mark.parametrize("remote_fresnel", [False, True])
-def test_submission_error(mock_get, mock_post, remote_fresnel, schedule_seq, port: int):
+def test_submission_error(mock_get, mock_post, remote_fresnel, schedule_seq):
     """Test a FresnelQPU interfacing a working QPU that fails at launching jobs."""
+    global port
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
     if remote_fresnel:
@@ -415,8 +416,9 @@ def test_submission_error(mock_get, mock_post, remote_fresnel, schedule_seq, por
     side_effect=mocked_requests_post_success,
 )
 @pytest.mark.parametrize("remote_fresnel", [False, True])
-def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq, port: int):
+def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq):
     """Test a FresnelQPU interfacing a non-working QPU which could accept jobs."""
+    global port
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
     if remote_fresnel:
