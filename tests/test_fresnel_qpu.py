@@ -221,9 +221,6 @@ def mocked_requests_post_fail(*args, **kwargs):
 base_uris = ["http://fresneldevice/api", None]
 
 
-base_uris = ["http://fresneldevice/api", None]
-
-
 def _switch_seq_device(seq, device):
     if device != TEMP_DEVICE:
         if device == MockDevice:
