@@ -901,6 +901,8 @@ def test_check_system(_):
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
     with pytest.warns(UserWarning, match="QPU not operational,"):
         fresnel_qpu.check_system()
+    with pytest.raises(QPUException, match="QPU not operational"):
+        fresnel_qpu.check_system(raise_error=True)
 
 
 class SideEffect:

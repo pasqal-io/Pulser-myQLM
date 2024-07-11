@@ -531,7 +531,7 @@ class FresnelQPU(QPUHandler):
 
     def check_system(self, raise_error: bool = False) -> None:
         """Raises a warning or an error if the system is not operational.
-        
+
         Deprecated. Not used in this class anymore.
         Maintained for backwards compatibility.
         """
