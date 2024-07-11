@@ -530,7 +530,11 @@ class FresnelQPU(QPUHandler):
         return TEMP_DEVICE
 
     def check_system(self, raise_error: bool = False) -> None:
-        """Raises a warning or an error if the system is not operational."""
+        """Raises a warning or an error if the system is not operational.
+        
+        Deprecated. Not used in this class anymore.
+        Maintained for backwards compatibility.
+        """
         if not self.is_operational:
             msg = (
                 "QPU not operational, please run calibration and validation of the "

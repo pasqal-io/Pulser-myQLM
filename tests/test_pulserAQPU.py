@@ -362,7 +362,7 @@ def failing_schedule_seq(test_ising_qpu, omega_t, delta_t):
 
 
 @pytest.fixture
-def schedule_seq(test_ising_qpu, omega_t, delta_t):
+def schedule_seq(test_ising_qpu, omega_t, delta_t) -> tuple[Schedule, Sequence]:
     """A tuple of (Schedule, Sequence) who are equivalent."""
     t0 = 16 / 1000  # in µs
     H0 = test_ising_qpu.hamiltonian(omega_t, delta_t, 0)
@@ -892,6 +892,17 @@ def test_job_simulation(
     compare_results_raw_data(result.raw_data, exp_result)
 
 
+@mock.patch(
+    "pulser_myqlm.pulserAQPU.requests.get",
+    side_effect=mocked_requests_get_non_operational,
+)
+def test_check_system(_):
+    base_uri = "http://fresneldevice/api"
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    with pytest.warns(UserWarning, match="QPU not operational,"):
+        fresnel_qpu.check_system()
+
+
 class SideEffect:
     """Helper class to iterate through functions when calling side_effect."""
 
@@ -909,12 +920,12 @@ class SideEffect:
 @pytest.mark.parametrize("base_uri", base_uris)
 @pytest.mark.parametrize("remote_fresnel", [False, True])
 def test_non_operational_qpu(
-    polling_interval,
-    mock_get,
-    mock_post,
-    schedule_seq,
-    base_uri,
-    remote_fresnel,
+    polling_interval: mock.Mock,
+    mock_get: mock.Mock,
+    mock_post: mock.Mock,
+    schedule_seq: tuple[Schedule, Sequence],
+    base_uri: str | None,
+    remote_fresnel: bool,
 ):
     """Test the impact of non operational QPU on the flow of submitting a job.
 
