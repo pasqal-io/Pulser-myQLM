@@ -892,32 +892,94 @@ def test_job_simulation(
     compare_results_raw_data(result.raw_data, exp_result)
 
 
-@mock.patch(
-    "pulser_myqlm.pulserAQPU.requests.get",
-    side_effect=mocked_requests_get_non_operational,
-)
-def test_non_operational_qpu(mock_get, schedule_seq):
-    """Test a FresnelQPU interfacing a non-operational QPU."""
+class SideEffect:
+    """Helper class to iterate through functions when calling side_effect."""
+
+    def __init__(self, *fns):
+        self.fs = iter(fns)
+
+    def __call__(self, *args, **kwargs):
+        f = next(self.fs)
+        return f(*args, **kwargs)
+
+
+@mock.patch("pulser_myqlm.pulserAQPU.requests.post")
+@mock.patch("pulser_myqlm.pulserAQPU.requests.get")
+@mock.patch("pulser_myqlm.pulserAQPU.QPU_POLLING_INTERVAL_SECONDS")
+@pytest.mark.parametrize("base_uri", base_uris)
+@pytest.mark.parametrize("remote_fresnel", [False, True])
+def test_non_operational_qpu(
+    polling_interval,
+    mock_get,
+    mock_post,
+    schedule_seq,
+    base_uri,
+    remote_fresnel,
+):
+    """Test the impact of non operational QPU on the flow of submitting a job.
+
+    At first the FresnelQPU is instantiated with a non operational
+    QPU. This should not prevent the FresnelQPU from being instantiated.
+
+    Test the poll_system method. At first with a non operational response
+    which triggers a user warning. On second attempt with an operational
+    QPU response which breaks out of the polling loop.
+
+    Do the same for deploy_qpu which also uses the poll_system method.
+
+    Finally do the same for submit_job which also uses the poll_system method.
+    """
     global port
+    # Decrease polling_interval to 0.1 to speed up test.
+    polling_interval.side_effect = 0.1
+
+    # Set response to non operational for
+    # - FresnelQPU instantiation
+    # - is_operational check
+    mock_get.side_effect = mocked_requests_get_non_operational
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
+
     assert not fresnel_qpu.is_operational
-    with pytest.warns(UserWarning, match="QPU not operational,"):
-        fresnel_qpu.check_system()
-    # Deploy the QPU on a Qaptiva server
-    port += 1
-    server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, port))
-    server_thread.daemon = True
-    with pytest.warns(UserWarning, match="QPU not operational,"):
-        server_thread.start()
+
+    # Set response to non operational for first polling atempt
+    # Set response to success in second polling attempt
+    mock_get.side_effect = SideEffect(
+        mocked_requests_get_non_operational, mocked_requests_get_success
+    )
+    with pytest.warns(UserWarning, match="QPU not operational, will try again in"):
+        fresnel_qpu.poll_system()
+
+    # Set response to non operational for first polling atempt
+    # Set response to success in second polling attempt
+    mock_get.side_effect = SideEffect(
+        mocked_requests_get_non_operational, mocked_requests_get_success
+    )
+    if remote_fresnel:
+        port += 1
+        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, port))
+        server_thread.daemon = True
+        with pytest.warns(UserWarning, match="QPU not operational, will try again in"):
+            server_thread.start()
+    qpu = get_remote_qpu(port) if remote_fresnel else fresnel_qpu
+
     # Simulate Sequence using Pulser Simulation
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-    with pytest.raises(QPUException, match="QPU not operational,"):
-        fresnel_qpu.submit(job_from_seq)
-    remote_qpu = get_remote_qpu(port)
-    with pytest.raises(QPUException, match="QPU not operational,"):
-        remote_qpu.submit(job_from_seq)
+
+    # Set response to non operational for first polling atempt
+    # Set response to success in second polling attempt
+    # Set response to success for querying results
+    mock_get.side_effect = SideEffect(
+        mocked_requests_get_non_operational,
+        mocked_requests_get_success,
+        mocked_requests_get_success,
+        mocked_requests_get_success,
+    )
+    # Set response to sucess for posting job
+    mock_post.side_effect = mocked_requests_post_success
+    with pytest.warns(UserWarning, match="QPU not operational, will try again in"):
+        qpu.submit(job_from_seq)
 
 
 @mock.patch(

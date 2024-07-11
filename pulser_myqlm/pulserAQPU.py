@@ -28,6 +28,7 @@ from qat.qlmaas.qpus import QLMaaSQPU
 from scipy.spatial.distance import cdist
 
 DEFAULT_NUMBER_OF_SHOTS = 2000
+QPU_POLLING_INTERVAL_SECONDS = 5
 
 QPUType = Union[None, CommonQPU, QLMaaSQPU]
 
@@ -539,6 +540,13 @@ class FresnelQPU(QPUHandler):
                 raise QPUException(ErrorType.ABORT, message=msg)
             warnings.warn(msg, UserWarning)
 
+    def poll_system(self) -> None:
+        """Polls QPU until it is operational."""
+        msg = f"QPU not operational, will try again in {QPU_POLLING_INTERVAL_SECONDS}s"
+        while not self.is_operational:
+            warnings.warn(msg, UserWarning)
+            time.sleep(QPU_POLLING_INTERVAL_SECONDS)
+
     def serve(
         self, port: int, host_ip: str = "localhost", server_type: str | None = None
     ) -> None:
@@ -558,7 +566,7 @@ class FresnelQPU(QPUHandler):
                     a maximum of 10 running threads
                 "fork": multi-process server, each connection runs in a new process
         """
-        self.check_system()
+        self.poll_system()
         super().serve(port, host_ip, server_type)
 
     def submit_job(self, job: Job) -> Result:
@@ -604,7 +612,7 @@ class FresnelQPU(QPUHandler):
             )
         modulation = other_dict.get("modulation", False)
         # Check that the system is operational
-        self.check_system(raise_error=True)
+        self.poll_system()
         # Submit a job to the API
         payload = {
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
