@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from contextlib import nullcontext
 from threading import Thread
 from time import sleep
 from unittest import mock
@@ -950,17 +951,21 @@ def test_non_operational_qpu(
     # - FresnelQPU instantiation
     # - is_operational check
     mock_get.side_effect = mocked_requests_get_non_operational
-    base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
 
-    assert not fresnel_qpu.is_operational
+    if base_uri:
+        assert not fresnel_qpu.is_operational
 
     # Set response to non operational for first polling atempt
     # Set response to success in second polling attempt
     mock_get.side_effect = SideEffect(
         mocked_requests_get_non_operational, mocked_requests_get_success
     )
-    with pytest.warns(UserWarning, match="QPU not operational, will try again in"):
+    with (
+        pytest.warns(UserWarning, match="QPU not operational, will try again in")
+        if base_uri
+        else nullcontext()
+    ):
         fresnel_qpu.poll_system()
 
     # Set response to non operational for first polling atempt
@@ -972,7 +977,11 @@ def test_non_operational_qpu(
         port += 1
         server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, port))
         server_thread.daemon = True
-        with pytest.warns(UserWarning, match="QPU not operational, will try again in"):
+        with (
+            pytest.warns(UserWarning, match="QPU not operational, will try again in")
+            if base_uri
+            else nullcontext()
+        ):
             server_thread.start()
     qpu = get_remote_qpu(port) if remote_fresnel else fresnel_qpu
 
@@ -991,7 +1000,11 @@ def test_non_operational_qpu(
     )
     # Set response to sucess for posting job
     mock_post.side_effect = mocked_requests_post_success
-    with pytest.warns(UserWarning, match="QPU not operational, will try again in"):
+    with (
+        pytest.warns(UserWarning, match="QPU not operational, will try again in")
+        if base_uri
+        else nullcontext()
+    ):
         qpu.submit(job_from_seq)
 
 
