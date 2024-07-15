@@ -540,7 +540,11 @@ class FresnelQPU(QPUHandler):
             warnings.warn(msg, UserWarning)
 
     def serve(
-        self, port: int, host_ip: str = "localhost", server_type: str | None = None
+        self,
+        port: int,
+        host_ip: str = "localhost",
+        server_type: str | None = None,
+        **kwargs: str,
     ) -> None:
         """Runs the QPU inside a server.
 
@@ -559,7 +563,7 @@ class FresnelQPU(QPUHandler):
                 "fork": multi-process server, each connection runs in a new process
         """
         self.check_system()
-        super().serve(port, host_ip, server_type)
+        super().serve(port, host_ip, server_type, **kwargs)
 
     def submit_job(self, job: Job) -> Result:
         """Submit a MyQLM job encapsulating a Pulser Sequence to the QPU.

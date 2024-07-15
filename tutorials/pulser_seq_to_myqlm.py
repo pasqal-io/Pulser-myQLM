@@ -1,7 +1,7 @@
 """Example of a conversion of a Pulser Sequence into MyQLM."""
 
 import numpy as np
-from pulser import Pulse, Register, Sequence
+from pulser import Pulse, Sequence
 from pulser.devices import AnalogDevice
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
@@ -11,7 +11,9 @@ from pulser_myqlm import IsingAQPU
 # Pulser Sequence (find more at https://pulser.readthedocs.io/)
 
 device = AnalogDevice
-register = Register.square(2, 5, None)
+register = AnalogDevice.calibrated_register_layouts[
+    "TriangularLatticeLayout(61, 5.0µm)"
+].define_register(26, 35, 30)
 seq = Sequence(register, device)
 seq.declare_channel("ryd_glob", "rydberg_global")
 duration = 100
@@ -68,16 +70,17 @@ print(IsingAQPU.convert_result_to_samples(result), "\n")
 # Simulate the Job using AnalogQPU
 try:
     from qlmaas.qpus import AnalogQPU
-
-    analog_qpu = AnalogQPU()
-    aqpu = IsingAQPU.from_sequence(seq, qpu=analog_qpu)
-    results = aqpu.submit(job)
-    # Display the results once they have run on AnalogQPU
-    print("Results obtained with AnalogQPU: ", results.join())
-    print(
-        "Expressed as a dictionary of (state: probability): ",
-        {sample.state: sample.probability for sample in results},
-        "\n",
-    )
-except ImportError:
-    print("Can't import AnalogQPU, check connection to Qaptiva Access.")
+except ImportError as e:
+    raise ImportError(
+        "Can't import AnalogQPU, check connection to Qaptiva Access."
+    ) from e
+analog_qpu = AnalogQPU()
+aqpu = IsingAQPU.from_sequence(seq, qpu=analog_qpu)
+results = aqpu.submit(job)
+# Display the results once they have run on AnalogQPU
+print("Results obtained with AnalogQPU: ", results.join())
+print(
+    "Expressed as a dictionary of (state: probability): ",
+    {sample.state: sample.probability for sample in results},
+    "\n",
+)
