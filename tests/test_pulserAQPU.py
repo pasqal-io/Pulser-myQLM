@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from importlib.metadata import version
 from threading import Thread
 from time import sleep
 from unittest import mock
@@ -573,7 +574,7 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
         assert res_sample1 == res_sample2
 
 
-port = 1190
+PORT = 1190
 
 
 @pytest.mark.parametrize("qpu", [None, "local", "remote"])
@@ -591,11 +592,11 @@ def test_run_sequence(schedule_seq, qpu):
     if qpu == "remote":
         # pulser-simulation in a Remote FresnelQPU is used
         # Deploying a FresnelQPU on a remote server using serve
-        server_thread = Thread(target=deploy_qpu, args=(FresnelQPU(None), port))
+        server_thread = Thread(target=deploy_qpu, args=(FresnelQPU(None), PORT))
         server_thread.daemon = True
         server_thread.start()
         # Accessing it with RemoteQPU
-        sim_qpu = get_remote_qpu(port)
+        sim_qpu = get_remote_qpu(PORT)
 
     aqpu = IsingAQPU.from_sequence(seq, qpu=sim_qpu)
     # IsingQPU and FresnelQPU can only run job with a schedule
@@ -664,6 +665,20 @@ def test_run_sequence(schedule_seq, qpu):
     aqpu.set_qpu(PyLinalg())
     with pytest.raises(TypeError, match="'NoneType' object is not"):
         aqpu.submit(schedule.to_job())
+
+
+# Getting the version of myqlm by finding the package version using pip list
+myqlm_version = tuple(map(int, version("myqlm").split(".")))
+
+
+@pytest.mark.xfail(
+    myqlm_version > (1, 9, 9),
+    reason="'ssl_ca' introduced in version after myqlm 1.9.9.",
+)
+def test_deploy_fresnel_qpu():
+    """Test simulation of a Sequence using pulser-simulation."""
+    with pytest.raises(TypeError, match=r"got an unexpected keyword argument 'ssl_ca'"):
+        FresnelQPU(None).serve(PORT, "127.0.0.1", ssl_ca="")
 
 
 # Whether the current session has access to AnalogQPU
@@ -816,7 +831,7 @@ base_uris = ["http://fresneldevice/api", None]
 @pytest.mark.parametrize("remote_fresnel", [False, True])
 def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_seq):
     """Test submission of Jobs to a FresnelQPU interfacing a working QPU."""
-    global port
+    global PORT
     # Can't connect with a wrong address
     with pytest.raises(QPUException, match="Connection with API failed"):
         FresnelQPU(base_uri="")
@@ -825,8 +840,8 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
 
     # Deploy the QPU on a Qaptiva server
     if remote_fresnel:
-        port += 1
-        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, port))
+        PORT += 1
+        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
         server_thread.daemon = True
         server_thread.start()
 
@@ -834,7 +849,7 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
     _, seq = schedule_seq
     mock_seq = _switch_seq_device(seq, MockDevice)
     job_from_seq = IsingAQPU.convert_sequence_to_job(mock_seq)
-    qpu = get_remote_qpu(port) if remote_fresnel else fresnel_qpu
+    qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
     with pytest.raises(QPUException, match="The Sequence in job.schedule._other"):
         qpu.submit(job_from_seq)
 
@@ -866,7 +881,7 @@ def test_job_simulation(
     schedule_seq,
 ):
     """Test Sequence simulation on a FresnelQPU interfacing a working QPU."""
-    global port
+    global PORT
     np.random.seed(123)
 
     # Modify the device of the Sequence
@@ -876,11 +891,11 @@ def test_job_simulation(
 
     # Deploy the QPU on a Qaptiva server
     if remote_fresnel:
-        port += 1
-        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, port))
+        PORT += 1
+        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
         server_thread.daemon = True
         server_thread.start()
-    qpu = get_remote_qpu(port) if remote_fresnel else fresnel_qpu
+    qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
 
     # Simulate Sequence using Pulser Simulation
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
@@ -898,15 +913,15 @@ def test_job_simulation(
 )
 def test_non_operational_qpu(mock_get, schedule_seq):
     """Test a FresnelQPU interfacing a non-operational QPU."""
-    global port
+    global PORT
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
     assert not fresnel_qpu.is_operational
     with pytest.warns(UserWarning, match="QPU not operational,"):
         fresnel_qpu.check_system()
     # Deploy the QPU on a Qaptiva server
-    port += 1
-    server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, port))
+    PORT += 1
+    server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
     server_thread.daemon = True
     with pytest.warns(UserWarning, match="QPU not operational,"):
         server_thread.start()
@@ -915,7 +930,7 @@ def test_non_operational_qpu(mock_get, schedule_seq):
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
     with pytest.raises(QPUException, match="QPU not operational,"):
         fresnel_qpu.submit(job_from_seq)
-    remote_qpu = get_remote_qpu(port)
+    remote_qpu = get_remote_qpu(PORT)
     with pytest.raises(QPUException, match="QPU not operational,"):
         remote_qpu.submit(job_from_seq)
 
@@ -929,15 +944,15 @@ def test_non_operational_qpu(mock_get, schedule_seq):
 @pytest.mark.parametrize("remote_fresnel", [False, True])
 def test_submission_error(mock_get, mock_post, remote_fresnel, schedule_seq):
     """Test a FresnelQPU interfacing a working QPU that fails at launching jobs."""
-    global port
+    global PORT
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
     if remote_fresnel:
-        port += 1
-        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, port))
+        PORT += 1
+        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
         server_thread.daemon = True
         server_thread.start()
-    qpu = get_remote_qpu(port) if remote_fresnel else fresnel_qpu
+    qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
     # Simulate Sequence using Pulser Simulation
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
@@ -955,15 +970,15 @@ def test_submission_error(mock_get, mock_post, remote_fresnel, schedule_seq):
 @pytest.mark.parametrize("remote_fresnel", [False, True])
 def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq):
     """Test a FresnelQPU interfacing a non-working QPU which could accept jobs."""
-    global port
+    global PORT
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
     if remote_fresnel:
-        port += 1
-        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, port))
+        PORT += 1
+        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
         server_thread.daemon = True
         server_thread.start()
-    qpu = get_remote_qpu(port) if remote_fresnel else fresnel_qpu
+    qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
     # Simulate Sequence using Pulser Simulation
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
