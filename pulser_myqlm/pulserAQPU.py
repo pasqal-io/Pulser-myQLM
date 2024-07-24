@@ -199,7 +199,7 @@ class IsingAQPU(QPUHandler):
             for j in range(i)
         ]
         z_terms.extend(
-            [Term(sum_c6_rows[i] / 4, "Z", [i]) for i in range(self.nbqubits)]
+            [Term(-sum_c6_rows[i] / 4, "Z", [i]) for i in range(self.nbqubits)]
         )
         return Observable(
             self.nbqubits,
@@ -225,11 +225,12 @@ class IsingAQPU(QPUHandler):
         """
         terms = {
             "X": omega_t / 2.0 * cos(phi),
-            "Y": -omega_t / 2.0 * sin(phi),
-            "Z": -delta_t / 2.0,
+            "Y": omega_t / 2.0 * sin(phi),
+            "Z": delta_t / 2.0,
         }
         return Observable(
             self.nbqubits,
+            constant_coeff=-delta_t / 2.0,
             pauli_terms=[
                 Term(coeff, op, [i])
                 for i in range(self.nbqubits)

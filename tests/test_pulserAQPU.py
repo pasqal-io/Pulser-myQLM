@@ -134,10 +134,10 @@ def test_interaction_observables(test_ising_qpu):
                 == test_ising_qpu.c6_interactions[term.qbits[0]][term.qbits[1]] / 4.0
             )
         elif term.op == "Z":
-            # c6 int btw qbit i and j adds c6_interaction / 4 to coeff in front of Z_i
+            # c6 int btw qbit i and j adds -c6_interaction / 4 to coeff in front of Z_i
             assert (
                 term._coeff.get_value()
-                == np.sum(test_ising_qpu.c6_interactions[term.qbits[0]][:]) / 4.0
+                == -np.sum(test_ising_qpu.c6_interactions[term.qbits[0]][:]) / 4.0
             )
 
 
@@ -166,7 +166,7 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
         assert len(dict_terms[opp_index]) == 0
         assert len(dict_terms[index]) == test_ising_qpu.nbqubits
         assert len(set(dict_terms[index].values())) == 1
-        phase = (-1) ** (index == "Y") * amp / 2.0
+        phase = amp / 2.0
         assert set(dict_terms[index].values()) == {
             phase if not isinstance(phase, ArithExpression) else phase.to_thrift()
         }
@@ -182,8 +182,6 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
 
     obs = test_ising_qpu.pulse_observables(amp, det, phase)
     assert test_ising_qpu.nbqubits == obs.nbqbits
-    # Coefficient in front of I is zero
-    assert obs.constant_coeff == 0.0
     # Get the coefficients in front of X, Y and Z operators
     dict_terms = {"X": {}, "Y": {}, "Z": {}}
     for term in obs.terms:
@@ -216,7 +214,7 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
             and len(set(dict_terms["Y"].values())) == 1
         )
         x_coeff = 0.5 * cos(phase) * amp
-        y_coeff = -0.5 * sin(phase) * amp
+        y_coeff = 0.5 * sin(phase) * amp
         assert set(dict_terms["X"].values()) == {
             x_coeff if not isinstance(x_coeff, ArithExpression) else x_coeff.to_thrift()
         }
@@ -227,13 +225,15 @@ def test_pulse_observables(test_ising_qpu, amp, det, phase, request):
     # Z coefficients are associated to det
     if det == 0:
         assert len(dict_terms["Z"]) == 0
+        assert obs.constant_coeff == 0.0
     else:
         assert len(dict_terms["Z"]) == test_ising_qpu.nbqubits
         assert len(set(dict_terms["Z"].values())) == 1
-        z_coeff = -det / 2.0
+        z_coeff = det / 2.0
         assert set(dict_terms["Z"].values()) == {
             z_coeff if not isinstance(z_coeff, ArithExpression) else z_coeff.to_thrift()
         }
+        assert obs.constant_coeff == -det / 2.0
 
 
 @pytest.mark.parametrize(
@@ -280,7 +280,7 @@ def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
 
         for qbits, term_coeff in dict_terms["Z"].items():
             assert qbits in dict_ising_int["Z"].keys()
-            z_coeff = dict_ising_int["Z"][qbits] + -det / 2.0
+            z_coeff = dict_ising_int["Z"][qbits] + det / 2.0
             assert (
                 term_coeff == z_coeff.to_thrift()
                 if isinstance(z_coeff, ArithExpression)
@@ -703,14 +703,14 @@ def test_run_sequence_with_emulator(schedule_seq):
         sample.state.__str__(): sample.probability for sample in analog_results
     }
     assert out_analog_results == {
-        "|000>": 0.999775312857816,
-        "|001>": 5.1145664077504764e-05,
-        "|010>": 5.114566407750468e-05,
-        "|011>": 3.27402534249787e-09,
-        "|100>": 5.1145664077504696e-05,
-        "|101>": 3.2740253424978696e-09,
-        "|110>": 3.2740253424978717e-09,
-        "|111>": 7.762132597284945e-13,
+        "|000>": 0.9993103713371461,
+        "|001>": 0.00023046712231041623,
+        "|010>": 0.00023046712231041629,
+        "|011>": 1.1642314174585867e-08,
+        "|100>": 0.00023046712231041626,
+        "|101>": 1.1642314174585877e-08,
+        "|110>": 1.1642314174585875e-08,
+        "|111>": 6.545006475814311e-13,
     }
     # Simulate the Schedule
     job_from_sch = schedule.to_job()
@@ -720,14 +720,14 @@ def test_run_sequence_with_emulator(schedule_seq):
     }
     # The results obtained with the schedule are close
     assert out_sch_results == {
-        "|000>": 0.9997776883446927,
-        "|001>": 5.296836656346037e-05,
-        "|010>": 5.296836656346041e-05,
-        "|011>": 3.337723293535312e-09,
-        "|100>": 5.2968366563460384e-05,
-        "|101>": 3.33772329353531e-09,
-        "|110>": 3.337723293535311e-09,
-        "|111>": 7.6860463034749e-13,
+        "|000>": 0.9992998383147459,
+        "|001>": 0.000234336602529663,
+        "|010>": 0.000234336602529663,
+        "|011>": 1.3149858582460545e-08,
+        "|100>": 0.000234336602529663,
+        "|101>": 1.314985858246052e-08,
+        "|110>": 1.3149858582460543e-08,
+        "|111>": 6.725982232286964e-13,
     }
 
 
