@@ -200,7 +200,7 @@ class IsingAQPU(QPUHandler):
             for j in range(i)
         ]
         z_terms.extend(
-            [Term(sum_c6_rows[i] / 4, "Z", [i]) for i in range(self.nbqubits)]
+            [Term(-sum_c6_rows[i] / 4, "Z", [i]) for i in range(self.nbqubits)]
         )
         return Observable(
             self.nbqubits,
@@ -226,11 +226,12 @@ class IsingAQPU(QPUHandler):
         """
         terms = {
             "X": omega_t / 2.0 * cos(phi),
-            "Y": -omega_t / 2.0 * sin(phi),
-            "Z": -delta_t / 2.0,
+            "Y": omega_t / 2.0 * sin(phi),
+            "Z": delta_t / 2.0,
         }
         return Observable(
             self.nbqubits,
+            constant_coeff=-delta_t / 2.0,
             pauli_terms=[
                 Term(coeff, op, [i])
                 for i in range(self.nbqubits)
@@ -552,7 +553,11 @@ class FresnelQPU(QPUHandler):
             time.sleep(QPU_POLLING_INTERVAL_SECONDS)
 
     def serve(
-        self, port: int, host_ip: str = "localhost", server_type: str | None = None
+        self,
+        port: int,
+        host_ip: str = "localhost",
+        server_type: str | None = None,
+        **kwargs: str,
     ) -> None:
         """Runs the QPU inside a server.
 
@@ -571,7 +576,7 @@ class FresnelQPU(QPUHandler):
                 "fork": multi-process server, each connection runs in a new process
         """
         self.poll_system()
-        super().serve(port, host_ip, server_type)
+        super().serve(port, host_ip, server_type, **kwargs)
 
     def submit_job(self, job: Job) -> Result:
         """Submit a MyQLM job encapsulating a Pulser Sequence to the QPU.
