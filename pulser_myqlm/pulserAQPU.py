@@ -537,9 +537,9 @@ class FresnelQPU(QPUHandler):
         Maintained for backwards compatibility.
         """
         warnings.warn(
-            "This method is deprecated, use poll_system instead", 
-            DeprecationWarning, 
-            stacklevel=2
+            "This method is deprecated, use poll_system instead",
+            DeprecationWarning,
+            stacklevel=2,
         )
         if not self.is_operational:
             msg = (

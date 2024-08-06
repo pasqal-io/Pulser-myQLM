@@ -971,7 +971,7 @@ def test_non_operational_qpu(
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
 
     assert not fresnel_qpu.is_operational if base_uri else fresnel_qpu.is_operational
-        
+
     # Set response to non operational for first polling atempt
     # Set response to success in second polling attempt
     mock_get.side_effect = SideEffect(
