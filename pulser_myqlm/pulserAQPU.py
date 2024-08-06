@@ -536,6 +536,11 @@ class FresnelQPU(QPUHandler):
         Deprecated. Not used in this class anymore.
         Maintained for backwards compatibility.
         """
+        warnings.warn(
+            "This method is deprecated, use poll_system instead", 
+            DeprecationWarning, 
+            stacklevel=2
+        )
         if not self.is_operational:
             msg = (
                 "QPU not operational, please run calibration and validation of the "

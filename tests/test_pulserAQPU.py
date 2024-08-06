@@ -915,8 +915,9 @@ def test_job_simulation(
 def test_check_system(_):
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
-    with pytest.warns(UserWarning, match="QPU not operational,"):
-        fresnel_qpu.check_system()
+    with pytest.warns(DeprecationWarning, match="This method is deprecated,"):
+        with pytest.warns(UserWarning, match="QPU not operational,"):
+            fresnel_qpu.check_system()
     with pytest.raises(QPUException, match="QPU not operational"):
         fresnel_qpu.check_system(raise_error=True)
 
@@ -937,6 +938,7 @@ class SideEffect:
 @mock.patch("pulser_myqlm.pulserAQPU.QPU_POLLING_INTERVAL_SECONDS")
 @pytest.mark.parametrize("base_uri", base_uris)
 @pytest.mark.parametrize("remote_fresnel", [False, True])
+@pytest.mark.only
 def test_non_operational_qpu(
     polling_interval: mock.Mock,
     mock_get: mock.Mock,
@@ -968,9 +970,8 @@ def test_non_operational_qpu(
     mock_get.side_effect = mocked_requests_get_non_operational
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
 
-    if base_uri:
-        assert not fresnel_qpu.is_operational
-
+    assert not fresnel_qpu.is_operational if base_uri else fresnel_qpu.is_operational
+        
     # Set response to non operational for first polling atempt
     # Set response to success in second polling attempt
     mock_get.side_effect = SideEffect(
@@ -1015,12 +1016,20 @@ def test_non_operational_qpu(
     )
     # Set response to sucess for posting job
     mock_post.side_effect = mocked_requests_post_success
+    # Necessary for expected results to match
+    np.random.seed(123)
     with (
         pytest.warns(UserWarning, match="QPU not operational, will try again in")
         if base_uri
         else nullcontext()
     ):
-        qpu.submit(job_from_seq)
+        result = qpu.submit(job_from_seq)
+
+    exp_result = [
+        (Sample(probability=0.999, state=0), "|000>"),
+        (Sample(probability=0.001, state=4), "|100>"),
+    ]
+    compare_results_raw_data(result.raw_data, exp_result)
 
 
 @mock.patch(
