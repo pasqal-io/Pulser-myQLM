@@ -915,7 +915,7 @@ def test_job_simulation(
 def test_check_system(_):
     base_uri = "http://fresneldevice/api"
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
-    with pytest.warns(DeprecationWarning, match="This method is deprecated,"):
+    with pytest.warns(DeprecationWarning, match="This method is deprecated"):
         with pytest.warns(UserWarning, match="QPU not operational,"):
             fresnel_qpu.check_system()
     with pytest.raises(QPUException, match="QPU not operational"):

@@ -537,7 +537,9 @@ class FresnelQPU(QPUHandler):
         Maintained for backwards compatibility.
         """
         warnings.warn(
-            "This method is deprecated, use poll_system instead",
+            "This method is deprecated and will be deleted in pulser-myqlm 1.0.0. "
+            + "The operationnability of the QPU will be rather polled with"
+            + " `poll_system` than checked with `check_system`.",
             DeprecationWarning,
             stacklevel=2,
         )
