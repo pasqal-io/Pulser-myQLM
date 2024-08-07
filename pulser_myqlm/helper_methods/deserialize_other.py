@@ -1,4 +1,4 @@
-"""Defines deserializa_other method."""
+"""Defines deserialize_other method."""
 
 from __future__ import annotations
 
