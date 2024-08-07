@@ -28,6 +28,7 @@ from qat.qlmaas.qpus import QLMaaSQPU
 from scipy.spatial.distance import cdist
 
 DEFAULT_NUMBER_OF_SHOTS = 2000
+QPU_POLLING_INTERVAL_SECONDS = 5
 
 QPUType = Union[None, CommonQPU, QLMaaSQPU]
 
@@ -530,7 +531,18 @@ class FresnelQPU(QPUHandler):
         return TEMP_DEVICE
 
     def check_system(self, raise_error: bool = False) -> None:
-        """Raises a warning or an error if the system is not operational."""
+        """Raises a warning or an error if the system is not operational.
+
+        Deprecated. Not used in this class anymore.
+        Maintained for backwards compatibility.
+        """
+        warnings.warn(
+            "This method is deprecated and will be deleted in pulser-myqlm 1.0.0. "
+            + "The operationnability of the QPU will be rather polled with"
+            + " `poll_system` than checked with `check_system`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self.is_operational:
             msg = (
                 "QPU not operational, please run calibration and validation of the "
@@ -539,6 +551,13 @@ class FresnelQPU(QPUHandler):
             if raise_error:
                 raise QPUException(ErrorType.ABORT, message=msg)
             warnings.warn(msg, UserWarning)
+
+    def poll_system(self) -> None:
+        """Polls QPU until it is operational."""
+        msg = f"QPU not operational, will try again in {QPU_POLLING_INTERVAL_SECONDS}s"
+        while not self.is_operational:
+            warnings.warn(msg, UserWarning)
+            time.sleep(QPU_POLLING_INTERVAL_SECONDS)
 
     def serve(
         self,
@@ -563,7 +582,7 @@ class FresnelQPU(QPUHandler):
                     a maximum of 10 running threads
                 "fork": multi-process server, each connection runs in a new process
         """
-        self.check_system()
+        self.poll_system()
         super().serve(port, host_ip, server_type, **kwargs)
 
     def submit_job(self, job: Job) -> Result:
@@ -609,7 +628,7 @@ class FresnelQPU(QPUHandler):
             )
         modulation = other_dict.get("modulation", False)
         # Check that the system is operational
-        self.check_system(raise_error=True)
+        self.poll_system()
         # Submit a job to the API
         payload = {
             "nb_run": self.max_nbshots if not job.nbshots else job.nbshots,
