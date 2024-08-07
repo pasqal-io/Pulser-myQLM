@@ -938,7 +938,6 @@ class SideEffect:
 @mock.patch("pulser_myqlm.pulserAQPU.QPU_POLLING_INTERVAL_SECONDS")
 @pytest.mark.parametrize("base_uri", base_uris)
 @pytest.mark.parametrize("remote_fresnel", [False, True])
-@pytest.mark.only
 def test_non_operational_qpu(
     polling_interval: mock.Mock,
     mock_get: mock.Mock,
