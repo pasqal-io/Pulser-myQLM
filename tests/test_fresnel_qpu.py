@@ -16,8 +16,8 @@ from qat.core import Sample, Schedule
 
 from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
 from pulser_myqlm.ising_aqpu import IsingAQPU
-from tests.helper_methods.compare_raw_data import compare_results_raw_data
-from tests.helper_methods.deploy_qpu import deploy_qpu, get_remote_qpu
+from tests.helpers.compare_raw_data import compare_results_raw_data
+from tests.helpers.deploy_qpu import deploy_qpu, get_remote_qpu
 
 # Getting the version of myqlm by finding the package version using pip list
 myqlm_version = tuple(map(int, version("myqlm").split(".")))

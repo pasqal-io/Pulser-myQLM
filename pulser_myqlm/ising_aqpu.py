@@ -22,8 +22,8 @@ from qat.lang.AQASM.bits import QRegister
 from qat.qlmaas.qpus import QLMaaSQPU
 from scipy.spatial.distance import cdist
 
-from pulser_myqlm.helper_methods.deserialize_other import deserialize_other
-from pulser_myqlm.helper_methods.simulate_seq import simulate_seq
+from pulser_myqlm.helpers.deserialize_other import deserialize_other
+from pulser_myqlm.helpers.simulate_seq import simulate_seq
 
 QPUType = Union[None, CommonQPU, QLMaaSQPU]
 

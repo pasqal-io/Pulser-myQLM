@@ -21,8 +21,8 @@ from qat.qpus import PyLinalg
 from pulser_myqlm.fresnel_qpu import FresnelQPU
 from pulser_myqlm.ising_aqpu import IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules, sample_schedule
-from tests.helper_methods.compare_raw_data import compare_results_raw_data
-from tests.helper_methods.deploy_qpu import deploy_qpu, get_remote_qpu
+from tests.helpers.compare_raw_data import compare_results_raw_data
+from tests.helpers.deploy_qpu import deploy_qpu, get_remote_qpu
 
 
 def Pmod(a: float, b: float) -> float:
