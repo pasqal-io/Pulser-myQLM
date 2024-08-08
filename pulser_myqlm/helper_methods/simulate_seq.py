@@ -17,7 +17,8 @@ def simulate_seq(seq: Sequence, modulation: bool, nbshots: int | None) -> Counte
         seq: A Pulser Sequence to simulate.
         modulation: If True, uses modulated samples of the Sequence to perform
             the simulation.
-        nbshots: The number of shots to perform.
+        nbshots: The number of shots to perform (if None or 0,
+            defaults to pulser_myqlm.constants.DEFAULT_NUMBER_OF_SHOTS).
 
     Returns:
         A Counter object, output of pulser-simulation.

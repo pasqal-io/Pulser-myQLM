@@ -18,7 +18,8 @@ def deserialize_other(other_bytestr: bytes | None) -> dict:
         other_bytestr: The content of Job.schedule._other, a string encoded in utf-8.
 
     Returns:
-        A dictionary having at least the key "abstr_seq".
+        A dictionary containing a serialized Sequence (under the key "abstr_seq"),
+        and its associated Sequence (under the key "seq").
     """
     if not isinstance(other_bytestr, bytes):
         raise ValueError("job.schedule._other must be a string encoded in bytes.")

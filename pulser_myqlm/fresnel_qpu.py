@@ -5,26 +5,22 @@ from __future__ import annotations
 import json
 import time
 import warnings
-from pathlib import Path
 from typing import cast
 
 import requests
 from pulser.devices._device_datacls import Device
-from pulser.json.abstract_repr.deserializer import deserialize_device
 from qat.comm.exceptions.ttypes import ErrorType, QPUException
 from qat.core import Job, Result
 from qat.core.qpu import QPUHandler
 
-from pulser_myqlm.constants import DEFAULT_NUMBER_OF_SHOTS
+from pulser_myqlm.constants import (
+    DEFAULT_NUMBER_OF_SHOTS,
+    QPU_POLLING_INTERVAL_SECONDS,
+    TEMP_DEVICE,
+)
 from pulser_myqlm.helper_methods.deserialize_other import deserialize_other
 from pulser_myqlm.helper_methods.simulate_seq import simulate_seq
-from pulser_myqlm.pulserAQPU import IsingAQPU
-
-QPU_POLLING_INTERVAL_SECONDS = 5
-
-
-with open(Path(__file__).parent / "temp_device.json", "r", encoding="utf-8") as f:
-    TEMP_DEVICE = cast(Device, deserialize_device(f.read()))
+from pulser_myqlm.ising_aqpu import IsingAQPU
 
 
 class FresnelQPU(QPUHandler):

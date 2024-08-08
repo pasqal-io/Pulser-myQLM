@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from collections import Counter
+from threading import Thread
 
 import numpy as np
 import pytest
@@ -10,11 +12,17 @@ from pulser.devices import MockDevice, VirtualDevice
 from pulser.devices.interaction_coefficients import c6_dict
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
-from qat.core import Result, Schedule
+from qat.comm.exceptions.ttypes import QPUException
+from qat.core import Job, Result, Sample, Schedule
 from qat.core.variables import ArithExpression, Symbol, cos, sin
+from qat.lang.AQASM import CCNOT, Program
+from qat.qpus import PyLinalg
 
+from pulser_myqlm.fresnel_qpu import FresnelQPU
+from pulser_myqlm.ising_aqpu import IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules, sample_schedule
-from pulser_myqlm.pulserAQPU import IsingAQPU
+from tests.helper_methods.compare_raw_data import compare_results_raw_data
+from tests.helper_methods.deploy_qpu import deploy_qpu, get_remote_qpu
 
 
 def Pmod(a: float, b: float) -> float:
@@ -463,3 +471,175 @@ def test_convert_sequence_to_job(schedule_seq, modulation):
     assert job_from_seq.nbshots == 0
     assert schedule_from_seq.to_job().nbshots is None
     assert job_from_seq.schedule._other == schedule_from_seq._other
+
+
+@pytest.mark.parametrize(
+    "other_value, err_mess",
+    [
+        (None, "job.schedule._other must be a string encoded in bytes."),
+        (
+            json.dumps({"modulation": True}).encode("utf-8"),
+            "An abstract representation of the Sequence",
+        ),
+        (
+            json.dumps({"abstr_seq": "0", "modulation": False}).encode("utf-8"),
+            "Failed to deserialize the value",
+        ),
+    ],
+)
+def test_job_deserialization(schedule_seq, other_value, err_mess):
+    """Test value of Job.schedule._other for the result of a Sequence conversion."""
+    schedule, seq = schedule_seq
+    aqpu = IsingAQPU.from_sequence(seq)
+    job = schedule.to_job()
+    job.schedule._other = other_value
+    with pytest.raises(ValueError, match=err_mess):
+        aqpu.submit(job)
+    aqpu.set_qpu(FresnelQPU(None))
+    with pytest.raises(
+        QPUException, match="Failed at deserializing Job.Schedule._other"
+    ):
+        aqpu.submit(job)
+
+
+PORT = 1190
+
+
+@pytest.mark.parametrize("qpu", [None, "local", "remote"])
+def test_run_sequence(schedule_seq, qpu):
+    """Test simulation of a Sequence using pulser-simulation."""
+    np.random.seed(123)
+    schedule, seq = schedule_seq
+    sim_qpu = None
+    # If qpu is None, pulser-simulation in IsingAQPU is used
+    if qpu == "local":
+        # pulser-simulation in FresnelQPU is used
+        sim_qpu = FresnelQPU(None)
+        assert sim_qpu.is_operational
+        sim_qpu.check_system()
+    if qpu == "remote":
+        # pulser-simulation in a Remote FresnelQPU is used
+        # Deploying a FresnelQPU on a remote server using serve
+        server_thread = Thread(target=deploy_qpu, args=(FresnelQPU(None), PORT))
+        server_thread.daemon = True
+        server_thread.start()
+        # Accessing it with RemoteQPU
+        sim_qpu = get_remote_qpu(PORT)
+
+    aqpu = IsingAQPU.from_sequence(seq, qpu=sim_qpu)
+    # IsingQPU and FresnelQPU can only run job with a schedule
+    # Defining a job from a circuit instead of a schedule
+    prog = Program()
+    qbits = prog.qalloc(CCNOT.arity)
+    CCNOT(qbits)
+    job = prog.to_circ().to_job()
+    with pytest.raises(
+        QPUException, match="FresnelQPU can only execute a schedule job."
+    ):
+        aqpu.submit(job)
+
+    # Run job created from a sequence using convert_sequence_to_job
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
+    assert job_from_seq.nbshots == 1000
+    result = aqpu.submit(job_from_seq)
+    exp_result = [
+        (Sample(probability=0.999, state=0), "|000>"),
+        (Sample(probability=0.001, state=4), "|100>"),
+    ]
+    compare_results_raw_data(result.raw_data, exp_result)
+    assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
+    # Run job created from a sequence using convert_sequence_to_schedule
+    schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
+    job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
+    assert not job_from_seq.nbshots
+    result_schedule = aqpu.submit(job_from_seq)
+    exp_result_schedule = [
+        (Sample(probability=0.9995, state=0), "|000>"),
+        (Sample(probability=0.0005, state=1), "|001>"),
+    ]
+    compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
+    assert IsingAQPU.convert_result_to_samples(result_schedule) == {
+        "000": 1999,
+        "001": 1,
+    }
+
+    # Can simulate Job if Schedule is not equivalent to Sequence
+    empty_job = Job()
+    empty_schedule = Schedule()
+    empty_schedule._other = schedule_from_seq._other
+    empty_job.schedule = empty_schedule
+    result_empty_sch = aqpu.submit(empty_job)
+    exp_result_empty_sch = [
+        (Sample(probability=0.999, state=0), "|000>"),
+        (Sample(probability=0.0005, state=1), "|001>"),
+        (Sample(probability=0.0005, state=4), "|100>"),
+    ]
+    compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
+    assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
+        "000": 1998,
+        "001": 1,
+        "100": 1,
+    }
+
+    # Submit_job of IsingAQPU must not be used if qpu is not None
+    if qpu is not None:
+        with pytest.raises(
+            ValueError,
+            match="`submit_job` must not be used if the qpu attribute is defined,",
+        ):
+            aqpu.submit_job(schedule.to_job())
+
+    # Can't simulate a time-dependent job with PyLinalg (a simulator of circuits)
+    aqpu.set_qpu(PyLinalg())
+    with pytest.raises(TypeError, match="'NoneType' object is not"):
+        aqpu.submit(schedule.to_job())
+
+
+# Whether the current session has access to AnalogQPU
+has_analog_qpu = True
+try:
+    from qlmaas.qpus import AnalogQPU
+
+    myqlm_analog_qpu = AnalogQPU()
+except ImportError:
+    has_analog_qpu = False
+
+
+@pytest.mark.skipif(not has_analog_qpu, reason="No connection to Qaptiva Access.")
+def test_run_sequence_with_emulator(schedule_seq):
+    """Test simulation of a Sequence using AnalogQPU."""
+    schedule, seq = schedule_seq
+    aqpu = IsingAQPU.from_sequence(seq, qpu=myqlm_analog_qpu)
+    # Simulate a Job converted from the Sequence on AnalogQPU
+    job = IsingAQPU.convert_sequence_to_job(seq)
+    analog_results = aqpu.submit(job).join()
+    out_analog_results = {
+        sample.state.__str__(): sample.probability for sample in analog_results
+    }
+    assert out_analog_results == {
+        "|000>": 0.9993103713371461,
+        "|001>": 0.00023046712231041623,
+        "|010>": 0.00023046712231041629,
+        "|011>": 1.1642314174585867e-08,
+        "|100>": 0.00023046712231041626,
+        "|101>": 1.1642314174585877e-08,
+        "|110>": 1.1642314174585875e-08,
+        "|111>": 6.545006475814311e-13,
+    }
+    # Simulate the Schedule
+    job_from_sch = schedule.to_job()
+    sch_results = aqpu.submit(job_from_sch(u=0)).join()
+    out_sch_results = {
+        sample.state.__str__(): sample.probability for sample in sch_results
+    }
+    # The results obtained with the schedule are close
+    assert out_sch_results == {
+        "|000>": 0.9992998383147459,
+        "|001>": 0.000234336602529663,
+        "|010>": 0.000234336602529663,
+        "|011>": 1.3149858582460545e-08,
+        "|100>": 0.000234336602529663,
+        "|101>": 1.314985858246052e-08,
+        "|110>": 1.3149858582460543e-08,
+        "|111>": 6.725982232286964e-13,
+    }

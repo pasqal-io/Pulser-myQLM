@@ -2,4 +2,4 @@
 
 from pulser_myqlm._version import __version__
 from pulser_myqlm.fresnel_qpu import FresnelQPU
-from pulser_myqlm.pulserAQPU import IsingAQPU
+from pulser_myqlm.ising_aqpu import IsingAQPU
