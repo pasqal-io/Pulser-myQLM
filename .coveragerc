@@ -12,6 +12,7 @@ exclude_lines =
 omit =
     tests/*
     setup.py
+    fresnel_qpu_server.py
 
 show_missing = True
 
