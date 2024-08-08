@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
     """Check that two lists of samples (as Result.raw_data) are the same."""
     for i, sample1 in enumerate(results1):
