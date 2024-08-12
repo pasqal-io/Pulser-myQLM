@@ -6,6 +6,7 @@ from pulser import Pulse, Sequence
 from pulser.waveforms import CustomWaveform
 from qat.core import Schedule
 from qat.core.variables import Variable
+from qat.lang.AQASM import CCNOT, Program
 
 from pulser_myqlm import IsingAQPU
 from pulser_myqlm.fresnel_qpu import TEMP_DEVICE
@@ -37,6 +38,16 @@ def omega_t(t_variable):
 @pytest.fixture
 def delta_t(t_variable, u_variable):
     return (1 - t_variable + u_variable) / 100  # in rad/us
+
+
+@pytest.fixture
+def circuit_job():
+    # IsingQPU and FresnelQPU can only run job with a schedule
+    # Defining a job from a circuit instead of a schedule
+    prog = Program()
+    qbits = prog.qalloc(CCNOT.arity)
+    CCNOT(qbits)
+    return prog.to_circ().to_job()
 
 
 @pytest.fixture

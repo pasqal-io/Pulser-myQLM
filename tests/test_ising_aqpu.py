@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from threading import Thread
 
 import numpy as np
 import pytest
@@ -15,14 +14,12 @@ from pulser_simulation import QutipEmulator
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Job, Result, Sample, Schedule
 from qat.core.variables import ArithExpression, Symbol, cos, sin
-from qat.lang.AQASM import CCNOT, Program
 from qat.qpus import PyLinalg
 
 from pulser_myqlm.fresnel_qpu import FresnelQPU
 from pulser_myqlm.ising_aqpu import IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules, sample_schedule
 from tests.helpers.compare_raw_data import compare_results_raw_data
-from tests.helpers.deploy_qpu import deploy_qpu, get_remote_qpu
 
 
 def Pmod(a: float, b: float) -> float:
@@ -502,41 +499,17 @@ def test_job_deserialization(schedule_seq, other_value, err_mess):
         aqpu.submit(job)
 
 
-PORT = 1190
-
-
-@pytest.mark.parametrize("qpu", [None, "local", "remote"])
-def test_run_sequence(schedule_seq, qpu):
+def test_run_sequence_ising(schedule_seq, circuit_job):
     """Test simulation of a Sequence using pulser-simulation."""
     np.random.seed(123)
     schedule, seq = schedule_seq
-    sim_qpu = None
-    # If qpu is None, pulser-simulation in IsingAQPU is used
-    if qpu == "local":
-        # pulser-simulation in FresnelQPU is used
-        sim_qpu = FresnelQPU(None)
-        assert sim_qpu.is_operational
-        sim_qpu.check_system()
-    if qpu == "remote":
-        # pulser-simulation in a Remote FresnelQPU is used
-        # Deploying a FresnelQPU on a remote server using serve
-        server_thread = Thread(target=deploy_qpu, args=(FresnelQPU(None), PORT))
-        server_thread.daemon = True
-        server_thread.start()
-        # Accessing it with RemoteQPU
-        sim_qpu = get_remote_qpu(PORT)
-
-    aqpu = IsingAQPU.from_sequence(seq, qpu=sim_qpu)
-    # IsingQPU and FresnelQPU can only run job with a schedule
+    aqpu = IsingAQPU.from_sequence(seq)
+    # IsingQPU can only run job with a schedule
     # Defining a job from a circuit instead of a schedule
-    prog = Program()
-    qbits = prog.qalloc(CCNOT.arity)
-    CCNOT(qbits)
-    job = prog.to_circ().to_job()
     with pytest.raises(
-        QPUException, match="FresnelQPU can only execute a schedule job."
+        QPUException, match="IsingAQPU can only execute a schedule job."
     ):
-        aqpu.submit(job)
+        aqpu.submit(circuit_job)
 
     # Run job created from a sequence using convert_sequence_to_job
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
@@ -582,15 +555,14 @@ def test_run_sequence(schedule_seq, qpu):
     }
 
     # Submit_job of IsingAQPU must not be used if qpu is not None
-    if qpu is not None:
-        with pytest.raises(
-            ValueError,
-            match="`submit_job` must not be used if the qpu attribute is defined,",
-        ):
-            aqpu.submit_job(schedule.to_job())
+    aqpu.set_qpu(PyLinalg())
+    with pytest.raises(
+        ValueError,
+        match="`submit_job` must not be used if the qpu attribute is defined,",
+    ):
+        aqpu.submit_job(schedule.to_job())
 
     # Can't simulate a time-dependent job with PyLinalg (a simulator of circuits)
-    aqpu.set_qpu(PyLinalg())
     with pytest.raises(TypeError, match="'NoneType' object is not"):
         aqpu.submit(schedule.to_job())
 

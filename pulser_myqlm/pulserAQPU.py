@@ -5,8 +5,7 @@ import warnings
 from pulser_myqlm.fresnel_qpu import FresnelQPU
 from pulser_myqlm.ising_aqpu import IsingAQPU
 
-
-__all__ = ['FresnelQPU', 'IsingAQPU']
+__all__ = ["FresnelQPU", "IsingAQPU"]
 
 
 warnings.warn(

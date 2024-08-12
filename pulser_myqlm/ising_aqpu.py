@@ -413,7 +413,7 @@ class IsingAQPU(QPUHandler):
         if job.schedule is None:
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
-                message="FresnelQPU can only execute a schedule job.",
+                message="IsingAQPU can only execute a schedule job.",
             )
         other_dict = deserialize_other(job.schedule._other)
         modulation = other_dict.get("modulation", False)

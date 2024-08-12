@@ -12,7 +12,7 @@ from pulser import Pulse, Sequence
 from pulser.devices import MockDevice
 from pulser.register import Register
 from qat.comm.exceptions.ttypes import QPUException
-from qat.core import Sample, Schedule
+from qat.core import Job, Sample, Schedule
 
 from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
 from pulser_myqlm.ising_aqpu import IsingAQPU
@@ -120,6 +120,78 @@ def _switch_seq_device(seq, device):
         else:
             seq = seq.switch_device(device)
     return seq
+
+
+@pytest.mark.parametrize("qpu", ["local", "remote"])
+def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
+    """Test simulation of a Sequence using pulser-simulation."""
+    np.random.seed(123)
+    schedule, seq = schedule_seq
+    # If qpu is None, pulser-simulation in IsingAQPU is used
+    if qpu == "local":
+        # pulser-simulation in FresnelQPU is used
+        sim_qpu = FresnelQPU(None)
+        assert sim_qpu.is_operational
+        sim_qpu.check_system()
+    if qpu == "remote":
+        # pulser-simulation in a Remote FresnelQPU is used
+        # Deploying a FresnelQPU on a remote server using serve
+        server_thread = Thread(target=deploy_qpu, args=(FresnelQPU(None), PORT))
+        server_thread.daemon = True
+        server_thread.start()
+        # Accessing it with RemoteQPU
+        sim_qpu = get_remote_qpu(PORT)
+
+    aqpu = IsingAQPU.from_sequence(seq, qpu=sim_qpu)
+    # FresnelQPU can only run job with a schedule
+    # Defining a job from a circuit instead of a schedule
+    with pytest.raises(
+        QPUException, match="FresnelQPU can only execute a schedule job."
+    ):
+        aqpu.submit(circuit_job)
+
+    # Run job created from a sequence using convert_sequence_to_job
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
+    assert job_from_seq.nbshots == 1000
+    result = aqpu.submit(job_from_seq)
+    exp_result = [
+        (Sample(probability=0.999, state=0), "|000>"),
+        (Sample(probability=0.001, state=4), "|100>"),
+    ]
+    compare_results_raw_data(result.raw_data, exp_result)
+    assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
+    # Run job created from a sequence using convert_sequence_to_schedule
+    schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
+    job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
+    assert not job_from_seq.nbshots
+    result_schedule = aqpu.submit(job_from_seq)
+    exp_result_schedule = [
+        (Sample(probability=0.9995, state=0), "|000>"),
+        (Sample(probability=0.0005, state=1), "|001>"),
+    ]
+    compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
+    assert IsingAQPU.convert_result_to_samples(result_schedule) == {
+        "000": 1999,
+        "001": 1,
+    }
+
+    # Can simulate Job if Schedule is not equivalent to Sequence
+    empty_job = Job()
+    empty_schedule = Schedule()
+    empty_schedule._other = schedule_from_seq._other
+    empty_job.schedule = empty_schedule
+    result_empty_sch = aqpu.submit(empty_job)
+    exp_result_empty_sch = [
+        (Sample(probability=0.999, state=0), "|000>"),
+        (Sample(probability=0.0005, state=1), "|001>"),
+        (Sample(probability=0.0005, state=4), "|100>"),
+    ]
+    compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
+    assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
+        "000": 1998,
+        "001": 1,
+        "100": 1,
+    }
 
 
 base_uris = ["http://fresneldevice/api", None]
