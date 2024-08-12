@@ -16,7 +16,6 @@ from qat.core import Job, Result, Sample, Schedule
 from qat.core.variables import ArithExpression, Symbol, cos, sin
 from qat.qpus import PyLinalg
 
-from pulser_myqlm.fresnel_qpu import FresnelQPU
 from pulser_myqlm.ising_aqpu import IsingAQPU
 from pulser_myqlm.myqlmtools import are_equivalent_schedules, sample_schedule
 from tests.helpers.compare_raw_data import compare_results_raw_data
@@ -484,18 +483,13 @@ def test_convert_sequence_to_job(schedule_seq, modulation):
         ),
     ],
 )
-def test_job_deserialization(schedule_seq, other_value, err_mess):
+def test_job_deserialization_ising(schedule_seq, other_value, err_mess):
     """Test value of Job.schedule._other for the result of a Sequence conversion."""
     schedule, seq = schedule_seq
     aqpu = IsingAQPU.from_sequence(seq)
     job = schedule.to_job()
     job.schedule._other = other_value
     with pytest.raises(ValueError, match=err_mess):
-        aqpu.submit(job)
-    aqpu.set_qpu(FresnelQPU(None))
-    with pytest.raises(
-        QPUException, match="Failed at deserializing Job.Schedule._other"
-    ):
         aqpu.submit(job)
 
 

@@ -122,6 +122,26 @@ def _switch_seq_device(seq, device):
     return seq
 
 
+@pytest.mark.parametrize(
+    "other_value",
+    [
+        None,
+        json.dumps({"modulation": True}).encode("utf-8"),
+        json.dumps({"abstr_seq": "0", "modulation": False}).encode("utf-8"),
+    ],
+)
+def test_job_deserialization_fresnel(schedule_seq, other_value):
+    """Test value of Job.schedule._other for the result of a Sequence conversion."""
+    schedule, seq = schedule_seq
+    aqpu = IsingAQPU.from_sequence(seq, qpu=FresnelQPU(None))
+    job = schedule.to_job()
+    job.schedule._other = other_value
+    with pytest.raises(
+        QPUException, match="Failed at deserializing Job.Schedule._other"
+    ):
+        aqpu.submit(job)
+
+
 @pytest.mark.parametrize("qpu", ["local", "remote"])
 def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
     """Test simulation of a Sequence using pulser-simulation."""
