@@ -8,6 +8,7 @@ from pulser_myqlm.ising_aqpu import IsingAQPU
 __all__ = ["FresnelQPU", "IsingAQPU"]
 
 
+warnings.simplefilter("always")
 warnings.warn(
     (
         "This module is deprecated. Please import from "
