@@ -1,6 +1,5 @@
 import pytest
 
-
 def test_legacy_imports():
     """Backwards compatibility test.
 

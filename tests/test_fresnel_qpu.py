@@ -23,17 +23,15 @@ from tests.helpers.deploy_qpu import deploy_qpu, get_remote_qpu
 myqlm_version = tuple(map(int, version("myqlm").split(".")))
 
 
-@pytest.mark.xfail(
+PORT = 1190
+
+@pytest.mark.skipif(
     myqlm_version > (1, 9, 9),
     reason="'ssl_ca' introduced in version after myqlm 1.9.9.",
 )
 def test_deploy_fresnel_qpu():
-    """Test simulation of a Sequence using pulser-simulation."""
     with pytest.raises(TypeError, match=r"got an unexpected keyword argument 'ssl_ca'"):
         FresnelQPU(None).serve(PORT, "127.0.0.1", ssl_ca="")
-
-
-PORT = 1190
 
 
 class MockResponse:
@@ -415,7 +413,7 @@ def test_non_operational_qpu(
     np.random.seed(123)
     with (
         pytest.warns(UserWarning, match="QPU not operational, will try again in")
-        if base_uri
+        if base_uri and not remote_fresnel
         else nullcontext()
     ):
         result = qpu.submit(job_from_seq)
