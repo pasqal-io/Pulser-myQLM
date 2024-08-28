@@ -25,6 +25,7 @@ myqlm_version = tuple(map(int, version("myqlm").split(".")))
 
 PORT = 1190
 
+
 @pytest.mark.skipif(
     myqlm_version > (1, 9, 9),
     reason="'ssl_ca' introduced in version after myqlm 1.9.9.",
@@ -150,7 +151,8 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
         # pulser-simulation in FresnelQPU is used
         sim_qpu = FresnelQPU(None)
         assert sim_qpu.is_operational
-        sim_qpu.check_system()
+        with pytest.warns(DeprecationWarning, match="This method is deprecated"):
+            sim_qpu.check_system()
     if qpu == "remote":
         # pulser-simulation in a Remote FresnelQPU is used
         # Deploying a FresnelQPU on a remote server using serve
@@ -313,7 +315,8 @@ def test_check_system(_):
         with pytest.warns(UserWarning, match="QPU not operational,"):
             fresnel_qpu.check_system()
     with pytest.raises(QPUException, match="QPU not operational"):
-        fresnel_qpu.check_system(raise_error=True)
+        with pytest.warns(DeprecationWarning, match="This method is deprecated"):
+            fresnel_qpu.check_system(raise_error=True)
 
 
 class SideEffect:
@@ -413,7 +416,7 @@ def test_non_operational_qpu(
     np.random.seed(123)
     with (
         pytest.warns(UserWarning, match="QPU not operational, will try again in")
-        if base_uri and not remote_fresnel
+        if base_uri
         else nullcontext()
     ):
         result = qpu.submit(job_from_seq)

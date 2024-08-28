@@ -465,7 +465,7 @@ def test_convert_sequence_to_job(schedule_seq, modulation):
     # Schedules obtained from conversion to job and schedule should match
     assert are_equivalent_schedules(schedule_from_seq, job_from_seq.schedule)
     assert job_from_seq.nbshots == 0
-    assert schedule_from_seq.to_job().nbshots == 0
+    assert schedule_from_seq.to_job().nbshots is None
     assert job_from_seq.schedule._other == schedule_from_seq._other
 
 
