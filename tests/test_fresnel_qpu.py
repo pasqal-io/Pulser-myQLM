@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
+import time
 from contextlib import nullcontext
 from importlib.metadata import version
 from threading import Thread
-import time
 from unittest import mock
 
 import numpy as np
@@ -387,7 +387,6 @@ def test_non_operational_qpu(
     # Set response to success in second polling attempt
     mock_get.side_effect = SideEffect(
         mocked_requests_get_non_operational,
-        mocked_requests_get_success,
         mocked_requests_get_success,
         mocked_requests_get_success,
     )
