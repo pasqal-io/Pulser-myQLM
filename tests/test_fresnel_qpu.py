@@ -357,8 +357,8 @@ def test_non_operational_qpu(
     Finally do the same for submit_job which also uses the poll_system method.
     """
     global PORT
-    # Decrease polling_interval to 0.1 to speed up test.
-    polling_interval.side_effect = 0.1
+    # Decrease polling_interval to 1.0 to speed up test.
+    polling_interval.side_effect = 1.0
 
     # Set response to non operational for
     # - FresnelQPU instantiation
