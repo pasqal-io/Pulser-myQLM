@@ -386,10 +386,10 @@ def test_non_operational_qpu(
     # Set response to non operational for first polling atempt
     # Set response to success in second polling attempt
     mock_get.side_effect = SideEffect(
-        mocked_requests_get_non_operational, 
+        mocked_requests_get_non_operational,
         mocked_requests_get_success,
         mocked_requests_get_success,
-        mocked_requests_get_success
+        mocked_requests_get_success,
     )
     if remote_fresnel:
         PORT += 1
