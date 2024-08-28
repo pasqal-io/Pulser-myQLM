@@ -4,6 +4,7 @@ import json
 from contextlib import nullcontext
 from importlib.metadata import version
 from threading import Thread
+import time
 from unittest import mock
 
 import numpy as np
@@ -359,7 +360,8 @@ def test_non_operational_qpu(
     global PORT
     # Decrease polling_interval to speed up test.
     # Except when working with a RemoteQPU and base_uri
-    polling_interval.side_effect = 5 if base_uri and remote_fresnel else 0.1
+    polling_interval_duration = 0.1
+    polling_interval.side_effect = polling_interval_duration
 
     # Set response to non operational for
     # - FresnelQPU instantiation
@@ -396,6 +398,7 @@ def test_non_operational_qpu(
             else nullcontext()
         ):
             server_thread.start()
+        time.sleep(2*polling_interval_duration)
     qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
 
     # Simulate Sequence using Pulser Simulation
