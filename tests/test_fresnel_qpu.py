@@ -398,7 +398,7 @@ def test_non_operational_qpu(
             else nullcontext()
         ):
             server_thread.start()
-        time.sleep(3)
+        time.sleep(5)
     qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
 
     # Simulate Sequence using Pulser Simulation
