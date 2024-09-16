@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import warnings
-from typing import cast
+from typing import Any, cast
 
 import requests
 from pulser.devices._device_datacls import Device
@@ -15,12 +16,16 @@ from qat.core.qpu import QPUHandler
 
 from pulser_myqlm.constants import (
     DEFAULT_NUMBER_OF_SHOTS,
+    JOB_POLLING_INTERVAL_SECONDS,
+    JOB_POLLING_MAX_RETRIES,
     QPU_POLLING_INTERVAL_SECONDS,
     TEMP_DEVICE,
 )
 from pulser_myqlm.helpers.deserialize_other import deserialize_other
 from pulser_myqlm.helpers.simulate_seq import simulate_seq
 from pulser_myqlm.ising_aqpu import IsingAQPU
+
+logger = logging.getLogger(__name__)
 
 
 class FresnelQPU(QPUHandler):
@@ -122,6 +127,59 @@ class FresnelQPU(QPUHandler):
         self.poll_system()
         super().serve(port, host_ip, server_type, **kwargs)
 
+    def poll_job_results(self, job_response: dict[str, Any]) -> dict[str, Any]:
+        """Wait for the job to finish before querying results."""
+        if self.base_uri is None:
+            raise QPUException(
+                ErrorType.ABORT,
+                message="Results are only available if base_uri is defined",
+            )
+        retries = 0
+        while (
+            job_response["status"]
+            not in [
+                "ERROR",
+                "DONE",
+            ]
+            and retries <= JOB_POLLING_MAX_RETRIES
+        ):
+            try:
+                response = requests.get(self.base_uri + f"/jobs/{job_response['uid']}")
+                response.raise_for_status()
+                job_response = response.json()["data"]
+            except requests.ConnectionError as e:
+                logger.error(
+                    f"Job request raised Connection Error: {e},"
+                    + f" trying again in {JOB_POLLING_INTERVAL_SECONDS}s",
+                )
+            except requests.HTTPError as e:
+                if 400 <= response.status_code < 500:
+                    raise QPUException(
+                        ErrorType.NONERESULT,
+                        f"An error occured fetching your results: {e}",
+                    ) from e
+                logger.error(
+                    f"Job request returned a {response.status_code} code: {e},"
+                    + f" trying again in {JOB_POLLING_INTERVAL_SECONDS}s"
+                )
+            time.sleep(JOB_POLLING_INTERVAL_SECONDS)
+            retries += 1
+        if retries > JOB_POLLING_MAX_RETRIES:
+            raise QPUException(
+                ErrorType.NONERESULT,
+                "Too many retries polling job results.",
+            )
+
+        # Check that the job submission went well
+        if job_response["status"] == "ERROR":
+            raise QPUException(
+                ErrorType.NONERESULT,
+                "An error occured, check locally the Sequence before submitting or "
+                "contact the support.",
+            )
+
+        return job_response
+
     def submit_job(self, job: Job) -> Result:
         """Submit a MyQLM job encapsulating a Pulser Sequence to the QPU.
 
@@ -181,25 +239,12 @@ class FresnelQPU(QPUHandler):
                 ErrorType.ABORT, message="Could not create job: " + response.text
             )
         job_response = response.json()["data"]
-        print(f"Job #{job_response['uid']} created, status: {job_response['status']}")
+        logger.info(
+            f"Job #{job_response['uid']} created, status: {job_response['status']}"
+        )
 
-        # Wait for the job to finish before querying results
-        while response.status_code == 200 and job_response["status"] not in [
-            "ERROR",
-            "DONE",
-        ]:
-            assert job_response["status"] in ["PENDING", "RUNNING"]
-            time.sleep(1)
-            response = requests.get(self.base_uri + f"/jobs/{job_response['uid']}")
-            job_response = response.json()["data"]
-        # Check that the job submission went well
-        if response.status_code != 200 or job_response["status"] == "ERROR":
-            raise QPUException(
-                ErrorType.NONERESULT,
-                message="An error occured, check locally the Sequence before "
-                "submitting or contact the support.",
-            )
-        assert job_response["status"] == "DONE"
+        job_response = self.poll_job_results(job_response)
+
         # Convert the output of the API into a MyQLM Result
         return IsingAQPU.convert_samples_to_result(
             json.loads(job_response["result"])["counter"]
