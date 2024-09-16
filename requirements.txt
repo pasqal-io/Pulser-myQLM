@@ -3,3 +3,4 @@ scipy
 pulser-core >= 0.15.0
 pulser-simulation>=0.14.0
 myqlm>=1.9.0
+requests
