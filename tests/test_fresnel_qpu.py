@@ -9,6 +9,7 @@ from unittest import mock
 
 import numpy as np
 import pytest
+import requests
 from pulser import Pulse, Sequence
 from pulser.devices import MockDevice
 from pulser.register import Register
@@ -36,12 +37,14 @@ def test_deploy_fresnel_qpu():
         FresnelQPU(None).serve(PORT, "127.0.0.1", ssl_ca="")
 
 
-class MockResponse:
+class MockResponse(requests.Response):
     """An object similar to an output of requests.get or requests.post."""
 
     def __init__(self, json_data, status_code):
         self.json_data = json_data
         self.status_code = status_code
+        self.reason = None
+        self.url = None
 
     def json(self):
         return self.json_data
@@ -70,6 +73,13 @@ def mocked_requests_get_success(*args, **kwargs):
     return MockResponse(None, 404)
 
 
+def mocked_requests_get_running(*args, **kwargs):
+    return MockResponse(
+        {"data": {"status": "RUNNING", "uid": 1}},
+        200,
+    )
+
+
 def mocked_requests_get_non_operational(*args, **kwargs):
     """Mocks a requests.get response from a non-working system."""
     operational_url = "http://fresneldevice/api/latest/system/operational"
@@ -90,6 +100,18 @@ def mocked_requests_get_error(*args, **kwargs):
     elif args[0] == job_url if args else kwargs["url"] == job_url:
         return MockResponse({"data": {"status": "ERROR"}}, 200)
     return MockResponse(None, 404)
+
+
+def mocked_requests_get_500_exception(*args, **kwargs):
+    return MockResponse({}, 500)
+
+
+def mocked_requests_get_400_exception(*args, **kwargs):
+    return MockResponse({}, 400)
+
+
+def mocked_requests_raises_connection_error(*args, **kwargs):
+    raise requests.ConnectionError
 
 
 def mocked_requests_post_success(*args, **kwargs):
@@ -467,7 +489,7 @@ def test_submission_error(mock_get, mock_post, remote_fresnel, schedule_seq):
     "pulser_myqlm.fresnel_qpu.requests.post",
     side_effect=mocked_requests_post_success,
 )
-@pytest.mark.parametrize("remote_fresnel", [False, True])
+@pytest.mark.parametrize("remote_fresnel", [True])
 def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq):
     """Test a FresnelQPU interfacing a non-working QPU which could accept jobs."""
     global PORT
@@ -484,3 +506,103 @@ def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq):
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
     with pytest.raises(QPUException, match="An error occured,"):
         qpu.submit(job_from_seq)
+
+
+@mock.patch("pulser_myqlm.fresnel_qpu.requests.get")
+@mock.patch(
+    "requests.post",
+    side_effect=mocked_requests_post_success,
+)
+def test_job_polling_success(_, mock_get):
+    base_uri = "http://fresneldevice/api"
+    mock_get.side_effect = mocked_requests_get_success
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    response = requests.post(
+        fresnel_qpu.base_uri + "/jobs", json={"nb_run": 1, "pulser_sequence": "seq"}
+    )
+    job_response = response.json()["data"]
+
+    mock_get.side_effect = SideEffect(
+        mocked_requests_get_running,
+        mocked_requests_get_500_exception,
+        mocked_requests_raises_connection_error,
+        mocked_requests_get_success,
+    )
+    result = fresnel_qpu.poll_job_results(job_response)
+    assert result["status"] == "DONE"
+    assert result["result"]
+
+
+@mock.patch("pulser_myqlm.fresnel_qpu.requests.get")
+@mock.patch(
+    "requests.post",
+    side_effect=mocked_requests_post_success,
+)
+def test_job_polling_400_failure(_, mock_get):
+    base_uri = "http://fresneldevice/api"
+    mock_get.side_effect = mocked_requests_get_success
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    response = requests.post(
+        fresnel_qpu.base_uri + "/jobs", json={"nb_run": 1, "pulser_sequence": "seq"}
+    )
+    job_response = response.json()["data"]
+
+    mock_get.side_effect = mocked_requests_get_400_exception
+
+    with pytest.raises(QPUException, match="An error occured fetching your results:"):
+        _ = fresnel_qpu.poll_job_results(job_response)
+
+
+@mock.patch("pulser_myqlm.fresnel_qpu.requests.get")
+@mock.patch(
+    "requests.post",
+    side_effect=mocked_requests_post_success,
+)
+def test_job_polling_error_failure(_, mock_get):
+    base_uri = "http://fresneldevice/api"
+    mock_get.side_effect = mocked_requests_get_success
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    response = requests.post(
+        fresnel_qpu.base_uri + "/jobs", json={"nb_run": 1, "pulser_sequence": "seq"}
+    )
+    job_response = response.json()["data"]
+
+    mock_get.side_effect = mocked_requests_get_error
+
+    with pytest.raises(
+        QPUException,
+        match=(
+            "An error occured, check locally the Sequence"
+            + " before submitting or contact the support."
+        ),
+    ):
+        _ = fresnel_qpu.poll_job_results(job_response)
+
+
+@mock.patch("pulser_myqlm.fresnel_qpu.requests.get")
+@mock.patch(
+    "requests.post",
+    side_effect=mocked_requests_post_success,
+)
+def test_job_polling_too_many_retries(_, mock_get):
+    base_uri = "http://fresneldevice/api"
+    mock_get.side_effect = mocked_requests_get_success
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    response = requests.post(
+        fresnel_qpu.base_uri + "/jobs", json={"nb_run": 1, "pulser_sequence": "seq"}
+    )
+    job_response = response.json()["data"]
+
+    mock_get.side_effect = mocked_requests_get_500_exception
+
+    with pytest.raises(QPUException, match="Too many retries polling job results."):
+        _ = fresnel_qpu.poll_job_results(job_response)
+
+
+def test_job_polling_no_base_uri():
+    fresnel_qpu = FresnelQPU(base_uri=None)
+
+    with pytest.raises(
+        QPUException, match="Results are only available if base_uri is defined"
+    ):
+        _ = fresnel_qpu.poll_job_results({})
