@@ -54,7 +54,7 @@ typing:
 test:
   stage: test
   script:
-    - pytest --cov --cov-fail-under=100
+    - pytest --cov --cov-fail-under=100 ./tests
 
 build_and_push:
   stage: build-push

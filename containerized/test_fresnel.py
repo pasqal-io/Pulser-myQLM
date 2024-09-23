@@ -106,7 +106,7 @@ def get_remote_qpu(port: int) -> RemoteQPU:
     raise error
 
 
-@pytest.mark.skipif(BASE_URI)
+@pytest.mark.skipif(BASE_URI, reason="CI can only run emulation")
 def test_run_sequence_fresnel_emulated(
     schedule_seq: tuple[Schedule, Sequence], circuit_job
 ):
