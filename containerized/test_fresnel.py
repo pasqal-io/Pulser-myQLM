@@ -1,21 +1,24 @@
+"""Test to be run in the docker image."""
+
 from __future__ import annotations
 
-import os 
-from time import sleep
+import os
 from threading import Thread
+from time import sleep
 
-import pytest
 import numpy as np
+import pytest
 from pulser import Pulse, Sequence
 from pulser.waveforms import CustomWaveform
-from pulser_myqlm import IsingAQPU
-from pulser_myqlm.fresnel_qpu import FresnelQPU
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Job, Sample, Schedule
 from qat.core.qpu import QPUHandler
 from qat.lang.AQASM import CCNOT, Program
 from qat.qpus import RemoteQPU
 from thrift.transport.TTransport import TTransportException
+
+from pulser_myqlm import IsingAQPU
+from pulser_myqlm.fresnel_qpu import FresnelQPU
 
 
 def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
@@ -32,6 +35,7 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
 
 BASE_URI = os.environ.get("PASQOS_URI", None)
 PORT = 1190
+
 
 @pytest.fixture
 def schedule_seq(test_ising_qpu, omega_t, delta_t) -> tuple[Schedule, Sequence]:
@@ -72,8 +76,10 @@ def schedule_seq(test_ising_qpu, omega_t, delta_t) -> tuple[Schedule, Sequence]:
     )
     return (schedule, seq)
 
+
 @pytest.fixture
 def circuit_job():
+    """Circuit job."""
     # IsingQPU and FresnelQPU can only run job with a schedule
     # Defining a job from a circuit instead of a schedule
     prog = Program()
@@ -88,6 +94,7 @@ def deploy_qpu(qpu: QPUHandler, port: int) -> None:
 
 
 def get_remote_qpu(port: int) -> RemoteQPU:
+    """Get remote qpu for port."""
     tries = 0
     while tries < 10:
         try:
@@ -101,9 +108,8 @@ def get_remote_qpu(port: int) -> RemoteQPU:
 
 @pytest.mark.skipif(BASE_URI)
 def test_run_sequence_fresnel_emulated(
-        schedule_seq: tuple[Schedule, Sequence], 
-        circuit_job
-    ):
+    schedule_seq: tuple[Schedule, Sequence], circuit_job
+):
     """Test simulation of a Sequence using pulser-simulation."""
     np.random.seed(123)
     _, seq = schedule_seq
@@ -166,11 +172,11 @@ def test_run_sequence_fresnel_emulated(
         "100": 1,
     }
 
+
 @pytest.mark.skipif(not BASE_URI)
 def test_run_sequence_fresnel_pasqos(
-        schedule_seq: tuple[Schedule, Sequence], 
-        circuit_job
-    ):
+    schedule_seq: tuple[Schedule, Sequence], circuit_job
+):
     """Test simulation of a Sequence using pulser-simulation."""
     np.random.seed(123)
     _, seq = schedule_seq
