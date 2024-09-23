@@ -3,10 +3,20 @@
 default:
   image: python:3.8
 
+stages:
+  - pre-commit
+  - test
+  - build-push
+  - push
+
 # Change pip's cache directory to be inside the project directory since we can
 # only cache local items.
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  REGISTRY_URL: "9ygszqk0.gra7.container-registry.ovh.net"
+  DOCKER_IMAGE: "$REGISTRY_URL/pulser-myqlm/pulser-myqlm"
+  DOCKER_TAG: "$CI_COMMIT_REF_SLUG"
+  DOCKER_TAG_SANITIZED: "${CI_COMMIT_REF_NAME//\//-}" # Sanitize the branch name
 
 # Pip's cache doesn't store the python packages
 # https://pip.pypa.io/en/stable/topics/caching/
@@ -22,21 +32,44 @@ before_script:
   - pip install -r dev_requirements.txt
 
 black:
+  stage: pre-commit
   script:
     - black --check --diff .
 
 isort:
+  stage: pre-commit
   script:
     - isort --check-only --diff .
 
 style:
+  stage: pre-commit
   script:
     - flake8
 
+typing:
+  stage: pre-commit
+  script:
+    - mypy
+
 test:
+  stage: test
   script:
     - pytest --cov --cov-fail-under=100
 
-typing:
+build_and_push:
+  stage: build-push
+  interruptible: false
+  image: ${REGISTRY_URL}/public/docker:cli
+  before_script:
+    - until docker info; do sleep 1; done
+    - echo $HARBOR_API_PWD  | docker login -u $HARBOR_API_USER $REGISTRY_URL --password-stdin
   script:
-    - mypy
+    - docker build -t $DOCKER_IMAGE:$DOCKER_TAG_SANITIZED -f ./containerized/pulser_myqlm.Dockerfile .
+    - docker push $DOCKER_IMAGE:$DOCKER_TAG_SANITIZED
+    - |
+      if [ "$CI_COMMIT_REF_NAME" == "main" ]; then
+        docker tag $DOCKER_IMAGE:$DOCKER_TAG_SANITIZED $DOCKER_IMAGE:latest
+        docker push $DOCKER_IMAGE:latest
+      fi
+  tags:
+    - docker
