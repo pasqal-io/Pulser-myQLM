@@ -62,7 +62,7 @@ build_and_push:
   image: ${REGISTRY_URL}/public/docker:cli
   before_script:
     - until docker info; do sleep 1; done
-    - echo $PCS_HARBOR_PASSWORD  | docker login -u $PCS_HARBOR_USERNAME $REGISTRY_URL --password-stdin
+    - echo ${PCS_HARBORD_PWD} | docker login --username ${PCS_HARBOR_USERNAME} --password-stdin ${REGISTRY_URL}
   script:
     - docker build -t $DOCKER_IMAGE:$DOCKER_TAG_SANITIZED -f ./containerized/pulser_myqlm.Dockerfile .
     - docker push $DOCKER_IMAGE:$DOCKER_TAG_SANITIZED
