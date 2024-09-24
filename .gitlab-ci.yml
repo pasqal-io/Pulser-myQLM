@@ -5,7 +5,7 @@ default:
 
 stages:
   - pre-commit
-  # - test
+  - test
   - build-push
   - push
 
@@ -51,10 +51,10 @@ typing:
   script:
     - mypy
 
-# test:
-#   stage: test
-#   script:
-#     - pytest --cov --cov-fail-under=100 ./tests
+test:
+  stage: test
+  script:
+    - pytest --cov --cov-fail-under=100 ./tests
 
 build_and_push:
   stage: build-push
