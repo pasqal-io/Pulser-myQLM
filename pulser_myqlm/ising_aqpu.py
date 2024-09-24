@@ -240,9 +240,9 @@ class IsingAQPU(QPUHandler):
         ch_sample = sampler.sample(seq, modulation).channel_samples[ch_name]
         t = Variable("t")  # in µs
         # Convert the samples of amplitude, detuning and phase to ArithExpression.
-        omega_t = get_item(list(ch_sample.amp), t * 1000)  # samples are every ns
-        delta_t = get_item(list(ch_sample.det), t * 1000)  # samples are every ns
-        phi_t = get_item(list(ch_sample.phase), t * 1000)  # samples are every ns
+        omega_t = get_item(ch_sample.amp.tolist(), t * 1000)  # samples are every ns
+        delta_t = get_item(ch_sample.det.tolist(), t * 1000)  # samples are every ns
+        phi_t = get_item(ch_sample.phase.tolist(), t * 1000)  # samples are every ns
         # Drive values are Ising hamiltonian at each time-step
         sch = Schedule(
             [
