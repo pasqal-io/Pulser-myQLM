@@ -18,4 +18,4 @@ COPY ./pulser_myqlm /opt/app/pulser_myqlm
 COPY ./containerized/test_fresnel.py /opt/app/tests/test_fresnel.py
 
 # Run tests
-RUN pytest .
+CMD ["pytest", "/opt/app/tests/test_fresnel.py"]
