@@ -16,7 +16,6 @@ variables:
   REGISTRY_URL: "9ygszqk0.gra7.container-registry.ovh.net"
   DOCKER_IMAGE: "$REGISTRY_URL/pulser-myqlm/pulser-myqlm"
   DOCKER_TAG: "$CI_COMMIT_REF_SLUG"
-  DOCKER_TAG_SANITIZED: "${CI_COMMIT_REF_NAME//\//-}" # Sanitize the branch name
 
 # Pip's cache doesn't store the python packages
 # https://pip.pypa.io/en/stable/topics/caching/
@@ -64,10 +63,10 @@ build_and_push:
     - until docker info; do sleep 1; done
     - echo ${PCS_HARBOR_PASSWORD} | docker login --username ${PCS_HARBOR_USERNAME} --password-stdin ${REGISTRY_URL}
   script:
-    - docker build -t $DOCKER_IMAGE:$DOCKER_TAG_SANITIZED -f ./containerized/pulser_myqlm.Dockerfile .
-    - docker push $DOCKER_IMAGE:$DOCKER_TAG_SANITIZED
+    - docker build -t $DOCKER_IMAGE:$DOCKER_TAG -f ./containerized/pulser_myqlm.Dockerfile .
+    - docker push $DOCKER_IMAGE:$DOCKER_TAG
     - |
       if [ "$CI_COMMIT_REF_NAME" == "main" ]; then
-        docker tag $DOCKER_IMAGE:$DOCKER_TAG_SANITIZED $DOCKER_IMAGE:latest
+        docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:latest
         docker push $DOCKER_IMAGE:latest
       fi
