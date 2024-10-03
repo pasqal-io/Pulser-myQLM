@@ -1,4 +1,4 @@
-FROM 9ygszqk0.gra7.container-registry.ovh.net/base/python:3.11-main
+FROM 9ygszqk0.gra7.container-registry.ovh.net/base/python:3.10-main
 
 # Install system dependencies using apk
 RUN apk update && \
