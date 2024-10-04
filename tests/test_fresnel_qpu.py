@@ -297,7 +297,7 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
 
     specs = qpu.get_specs()
     assert (device := deserialize_device(specs.description)) == TEMP_DEVICE
-    # Can't simulate if Register is not from calibrated Layouts
+    # Can't simulate if Register is not defined from a layout
     seq = Sequence(Register.triangular_lattice(2, 2, spacing=5), device)
     seq.declare_channel("rydberg_global", "rydberg_global")
     seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")

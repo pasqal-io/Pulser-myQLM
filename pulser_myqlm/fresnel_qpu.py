@@ -238,13 +238,12 @@ class FresnelQPU(QPUHandler):
                 message="The Sequence in job.schedule._other['abstr_seq'] is not "
                 "compatible with the properties of the QPU (see FresnelQPU.device).",
             ) from e
-        if not current_device.register_is_from_calibrated_layout(seq.register):
+        if seq.register.layout is None:
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
                 message=(
                     "The Register of the Sequence in job.schedule._other['abstr_seq']"
-                    " must be defined from a layout in the calibrated layouts of "
-                    "FresnelDevice."
+                    " must be defined from a layout."
                 ),
             )
         modulation = other_dict.get("modulation", False)
