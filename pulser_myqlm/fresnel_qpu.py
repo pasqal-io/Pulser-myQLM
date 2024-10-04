@@ -10,8 +10,9 @@ from typing import Any, cast
 
 import requests
 from pulser.devices._device_datacls import Device
+from pulser.json.abstract_repr.deserializer import deserialize_device
 from qat.comm.exceptions.ttypes import ErrorType, QPUException
-from qat.core import Job, Result
+from qat.core import HardwareSpecs, Job, Result
 from qat.core.qpu import QPUHandler
 
 from pulser_myqlm.constants import (
@@ -69,10 +70,35 @@ class FresnelQPU(QPUHandler):
         return cast(str, response.json()["data"]["operational_status"]) == "UP"
 
     @property
+    def deserialized_device(self) -> str:
+        """The Device implemented by the hardware as a JSON string."""
+        if self.base_uri is None:
+            return TEMP_DEVICE.to_abstract_repr()
+        try:
+            response = requests.get(self.base_uri + "/system")
+            response.raise_for_status()
+        except (requests.ConnectionError, requests.HTTPError) as e:
+            raise QPUException(
+                ErrorType.NONERESULT,
+                "An error occured fetching the Device implemented by the QPU.",
+            ) from e
+        return json.dumps(response.json()["data"]["specs"])
+
+    @property
     def device(self) -> Device:
-        """The current state of the Device that can be executed on the hardware."""
-        # TODO: requests.get(url=self.base_uri+"/system/device")
-        return TEMP_DEVICE
+        """The current state of the Device implemented by the hardware."""
+        if self.base_uri is None:
+            return TEMP_DEVICE
+        return cast(Device, deserialize_device(self.deserialized_device))
+
+    def get_specs(self) -> HardwareSpecs:
+        """Returns the HardwareSpecs of the QPU.
+
+        An abstract representation of the Pulser Device is given in the 'description'
+        of the HardwareSpecs. The Pulser Device can be obtained by using
+        'pulser.json.abstract_repr.deserializer.deserialize_device'.
+        """
+        return HardwareSpecs(description=self.deserialized_device)
 
     def check_system(self, raise_error: bool = False) -> None:
         """Raises a warning or an error if the system is not operational.
