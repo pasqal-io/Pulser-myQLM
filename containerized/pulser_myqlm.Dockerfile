@@ -1,10 +1,10 @@
-FROM 9ygszqk0.gra7.container-registry.ovh.net/base/python:3.10-main
+FROM python3.10:slim
 
-# Install system dependencies using apk
-RUN apk update && \
-    apk add --no-cache \
-    libffi-dev \
-    build-base
+# Install system dependencies needed for many Python packages
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copu requirements and install dependencies
 COPY requirements.txt /opt/app/requirements.txt
