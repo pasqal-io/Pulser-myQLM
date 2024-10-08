@@ -49,12 +49,14 @@ setup(
     name=distribution_name,
     version=__version__,
     description=description,
+    long_description=open("README.md", "r", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
     install_requires=requirements,
     extras_require={"dev": dev_requirements, "test_dev": test_requirements},
     packages=find_packages(),
     include_package_data=True,
     author="Pasqal Quantum Solutions / Pulser Development Team",
-    python_requires=">=3.8.0",
+    python_requires=">=3.9.0",
     license="Apache 2.0",
 )
 
