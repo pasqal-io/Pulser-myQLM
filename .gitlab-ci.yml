@@ -7,7 +7,7 @@ stages:
   - pre-commit
   - test
   - build-push
-  - push
+  - docket-test
 
 # Change pip's cache directory to be inside the project directory since we can
 # only cache local items.
@@ -70,3 +70,18 @@ build_and_push:
         docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:latest
         docker push $DOCKER_IMAGE:latest
       fi
+
+docker-test:
+  stage: docker-test
+  image: docker:stable # Use Docker-in-Docker to run Docker
+  services:
+    - docker:dind # Docker-in-Docker service
+  before_script:
+    - echo ${PCS_HARBOR_PASSWORD} | docker login --username ${PCS_HARBOR_USERNAME} --password-stdin ${REGISTRY_URL}
+  script:
+    # Pull the image that was built and pushed
+    - docker pull $DOCKER_IMAGE:$DOCKER_TAG
+    # Run the container, allowing it to execute its default CMD (which runs pytest)
+    - docker run --rm $DOCKER_IMAGE:$DOCKER_TAG
+  dependencies:
+    - build_and_push
