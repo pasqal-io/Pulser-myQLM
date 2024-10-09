@@ -10,7 +10,7 @@ RUN apt-get update \
 COPY requirements.txt /opt/app/requirements.txt
 
 WORKDIR /opt/app
-RUN pip install -r requirements.txt --use-deprecated=legacy-resolver
+RUN pip install -r requirements.txt
 RUN pip install pytest
 
 # Copy application files
