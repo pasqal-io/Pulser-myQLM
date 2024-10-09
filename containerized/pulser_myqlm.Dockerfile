@@ -1,4 +1,4 @@
-FROM python3.10:slim
+FROM python:3.10-slim
 
 # Install system dependencies needed for many Python packages
 RUN apt-get update \
