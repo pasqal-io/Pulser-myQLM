@@ -17,5 +17,8 @@ RUN pip install pytest
 COPY ./pulser_myqlm /opt/app/pulser_myqlm
 COPY ./containerized/test_fresnel.py /opt/app/tests/test_fresnel.py
 
+# Ensure /opt/app is in PYTHONPATH
+ENV PYTHONPATH=/opt/app:$PYTHONPATH
+
 # Run tests
 CMD ["pytest", "/opt/app/tests/test_fresnel.py"]
