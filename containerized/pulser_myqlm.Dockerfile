@@ -15,6 +15,7 @@ RUN pip install pytest
 
 # Copy application files
 COPY ./pulser_myqlm /opt/app/pulser_myqlm
+COPY ./VERSION.txt /opt/app/VERSION.txt
 COPY ./containerized/test_fresnel.py /opt/app/tests/test_fresnel.py
 
 # Ensure /opt/app is in PYTHONPATH
