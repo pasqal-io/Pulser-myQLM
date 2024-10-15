@@ -10,6 +10,9 @@ RUN apt-get update \
 COPY requirements.txt /opt/app/requirements.txt
 
 WORKDIR /opt/app
+# Ensure /opt/app is in PYTHONPATH
+ENV PYTHONPATH=/opt/app:$PYTHONPATH
+
 RUN pip install -r requirements.txt
 RUN pip install pytest
 
@@ -18,8 +21,6 @@ COPY ./pulser_myqlm /opt/app/pulser_myqlm
 COPY ./VERSION.txt /opt/app/VERSION.txt
 COPY ./containerized/test_fresnel.py /opt/app/tests/test_fresnel.py
 
-# Ensure /opt/app is in PYTHONPATH
-ENV PYTHONPATH=/opt/app:$PYTHONPATH
 
 # Run tests
 CMD ["pytest", "/opt/app/tests/test_fresnel.py"]
