@@ -18,7 +18,7 @@ from qat.qpus import RemoteQPU
 from thrift.transport.TTransport import TTransportException
 
 from pulser_myqlm import IsingAQPU
-from pulser_myqlm.fresnel_qpu import FresnelQPU, TEMP_DEVICE
+from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
 
 
 def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
@@ -37,9 +37,9 @@ BASE_URI = os.environ.get("PASQOS_URI", None)
 PORT = 1190
 
 
-
 @pytest.fixture
 def test_ising_qpu() -> IsingAQPU:
+    """A test instance of ising qpu."""
     return IsingAQPU(
         TEMP_DEVICE,
         TEMP_DEVICE.pre_calibrated_layouts[0].define_register(26, 35, 30),
