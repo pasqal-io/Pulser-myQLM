@@ -18,7 +18,7 @@ from qat.qpus import RemoteQPU
 from thrift.transport.TTransport import TTransportException
 
 from pulser_myqlm import IsingAQPU
-from pulser_myqlm.fresnel_qpu import FresnelQPU
+from pulser_myqlm.fresnel_qpu import FresnelQPU, TEMP_DEVICE
 
 
 def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
@@ -35,6 +35,15 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
 
 BASE_URI = os.environ.get("PASQOS_URI", None)
 PORT = 1190
+
+
+
+@pytest.fixture
+def test_ising_qpu() -> IsingAQPU:
+    return IsingAQPU(
+        TEMP_DEVICE,
+        TEMP_DEVICE.pre_calibrated_layouts[0].define_register(26, 35, 30),
+    )
 
 
 @pytest.fixture
@@ -106,7 +115,7 @@ def get_remote_qpu(port: int) -> RemoteQPU:
     raise error
 
 
-@pytest.mark.skipif(BASE_URI, reason="CI can only run emulation")
+@pytest.mark.skipif(BASE_URI, reason="Emulation is run in CI.")
 def test_run_sequence_fresnel_emulated(
     schedule_seq: tuple[Schedule, Sequence], circuit_job
 ):
@@ -173,7 +182,7 @@ def test_run_sequence_fresnel_emulated(
     }
 
 
-@pytest.mark.skipif(not BASE_URI)
+@pytest.mark.skipif(not BASE_URI, reason="CI can only run emulation.")
 def test_run_sequence_fresnel_pasqos(
     schedule_seq: tuple[Schedule, Sequence], circuit_job
 ):
