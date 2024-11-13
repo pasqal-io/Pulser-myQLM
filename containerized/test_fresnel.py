@@ -40,21 +40,25 @@ PORT = 1190
 
 @pytest.fixture
 def t_variable():
+    """Returns t variable."""
     return Variable("t")  # in ns
 
 
 @pytest.fixture
 def u_variable():
+    """Returns u variable."""
     return Variable("u")  # parameter
 
 
 @pytest.fixture
 def omega_t(t_variable):
+    """Returns omega t."""
     return (t_variable + 1) / 100
 
 
 @pytest.fixture
 def delta_t(t_variable, u_variable):
+    """Returns delta t."""
     return (1 - t_variable + u_variable) / 100  # in rad/us
 
 
