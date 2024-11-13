@@ -13,6 +13,7 @@ from pulser.waveforms import CustomWaveform
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Job, Sample, Schedule
 from qat.core.qpu import QPUHandler
+from qat.core.variables import Variable
 from qat.lang.AQASM import CCNOT, Program
 from qat.qpus import RemoteQPU
 from thrift.transport.TTransport import TTransportException
@@ -35,6 +36,26 @@ def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
 
 BASE_URI = os.environ.get("PASQOS_URI", None)
 PORT = 1190
+
+
+@pytest.fixture
+def t_variable():
+    return Variable("t")  # in ns
+
+
+@pytest.fixture
+def u_variable():
+    return Variable("u")  # parameter
+
+
+@pytest.fixture
+def omega_t(t_variable):
+    return (t_variable + 1) / 100
+
+
+@pytest.fixture
+def delta_t(t_variable, u_variable):
+    return (1 - t_variable + u_variable) / 100  # in rad/us
 
 
 @pytest.fixture
