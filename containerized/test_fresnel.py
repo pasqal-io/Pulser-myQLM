@@ -4,140 +4,20 @@ from __future__ import annotations
 
 import os
 from threading import Thread
-from time import sleep
 
 import numpy as np
 import pytest
-from pulser import Pulse, Sequence
-from pulser.waveforms import CustomWaveform
+from pulser import Sequence
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Job, Sample, Schedule
-from qat.core.qpu import QPUHandler
-from qat.core.variables import Variable
-from qat.lang.AQASM import CCNOT, Program
-from qat.qpus import RemoteQPU
-from thrift.transport.TTransport import TTransportException
 
 from pulser_myqlm import IsingAQPU
-from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
-
-
-def compare_results_raw_data(results1: list, results2: list[tuple]) -> None:
-    """Check that two lists of samples (as Result.raw_data) are the same."""
-    for i, sample1 in enumerate(results1):
-        res_sample1 = (sample1.probability, sample1._state, sample1.state.__str__())
-        res_sample2 = (
-            results2[i][0].probability,
-            results2[i][0]._state,
-            results2[i][1],
-        )
-        assert res_sample1 == res_sample2
-
+from pulser_myqlm.fresnel_qpu import FresnelQPU
+from tests.helpers.compare_raw_data import compare_results_raw_data
+from tests.helpers.deploy_qpu import deploy_qpu, get_remote_qpu
 
 BASE_URI = os.environ.get("PASQOS_URI", None)
 PORT = 1190
-
-
-@pytest.fixture
-def t_variable():
-    """Returns t variable."""
-    return Variable("t")  # in ns
-
-
-@pytest.fixture
-def u_variable():
-    """Returns u variable."""
-    return Variable("u")  # parameter
-
-
-@pytest.fixture
-def omega_t(t_variable):
-    """Returns omega t."""
-    return (t_variable + 1) / 100
-
-
-@pytest.fixture
-def delta_t(t_variable, u_variable):
-    """Returns delta t."""
-    return (1 - t_variable + u_variable) / 100  # in rad/us
-
-
-@pytest.fixture
-def test_ising_qpu() -> IsingAQPU:
-    """A test instance of ising qpu."""
-    return IsingAQPU(
-        TEMP_DEVICE,
-        TEMP_DEVICE.pre_calibrated_layouts[0].define_register(26, 35, 30),
-    )
-
-
-@pytest.fixture
-def schedule_seq(test_ising_qpu, omega_t, delta_t) -> tuple[Schedule, Sequence]:
-    """A tuple of (Schedule, Sequence) who are equivalent."""
-    t0 = 16 / 1000  # in µs
-    H0 = test_ising_qpu.hamiltonian(omega_t, delta_t, 0)
-    t1 = 24 / 1000  # in µs
-    H1 = test_ising_qpu.hamiltonian(1, 0, 0)
-    t2 = 20 / 1000  # in µs
-    H2 = test_ising_qpu.hamiltonian(1, 0, np.pi / 2)
-
-    schedule0 = Schedule(drive=[(1, H0)], tmax=t0)
-    schedule1 = Schedule(drive=[(1, H1)], tmax=t1)
-    schedule2 = Schedule(drive=[(1, H2)], tmax=t2)
-    schedule = schedule0 | schedule1 | schedule2
-
-    # Which is equivalent to having defined pulses using a Sequence
-    seq = Sequence(test_ising_qpu.register, test_ising_qpu.device)
-    seq.declare_channel("ryd_glob", "rydberg_global")
-
-    seq.add(
-        Pulse(
-            CustomWaveform([omega_t(t=ti / 1000) for ti in range(int(t0 * 1000))]),
-            CustomWaveform(
-                [delta_t(t=ti / 1000, u=0) for ti in range(int(t0 * 1000))]
-            ),  # no parametrized sequence for the moment
-            0,
-        ),
-        "ryd_glob",
-    )
-    seq.add(
-        Pulse.ConstantPulse(int(t1 * 1000), 1, 0, 0), "ryd_glob", protocol="no-delay"
-    )
-    seq.add(
-        Pulse.ConstantPulse(int(t2 * 1000), 1, 0, np.pi / 2),
-        "ryd_glob",
-        protocol="no-delay",
-    )
-    return (schedule, seq)
-
-
-@pytest.fixture
-def circuit_job():
-    """Circuit job."""
-    # IsingQPU and FresnelQPU can only run job with a schedule
-    # Defining a job from a circuit instead of a schedule
-    prog = Program()
-    qbits = prog.qalloc(CCNOT.arity)
-    CCNOT(qbits)
-    return prog.to_circ().to_job()
-
-
-def deploy_qpu(qpu: QPUHandler, port: int) -> None:
-    """Deploys the QPU on a server on a port at IP 127.0.0.1."""
-    qpu.serve(port, "127.0.0.1")
-
-
-def get_remote_qpu(port: int) -> RemoteQPU:
-    """Get remote qpu for port."""
-    tries = 0
-    while tries < 10:
-        try:
-            return RemoteQPU(port, "localhost")
-        except TTransportException as e:
-            tries += 1
-            sleep(1)
-            error = e
-    raise error
 
 
 @pytest.mark.skipif(BASE_URI, reason="Emulation is run in CI.")
