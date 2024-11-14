@@ -20,7 +20,7 @@ BASE_URI = os.environ.get("PASQOS_URI", None)
 PORT = 1190
 
 
-@pytest.mark.skipif(BASE_URI, reason="Emulation is run in CI.")
+@pytest.mark.skipif(BASE_URI is not None, reason="Emulation is run in CI.")
 def test_run_sequence_fresnel_emulated(
     schedule_seq: tuple[Schedule, Sequence], circuit_job
 ):
