@@ -56,9 +56,9 @@ class MockResponse(requests.Response):
         return ""
 
 
-OPERATIONAL_URL = "http://fresneldevice/api/latest/system/operational"
-JOB_URL = "http://fresneldevice/api/latest/jobs/1"
-SYSTEM_URL = "http://fresneldevice/api/latest/system"
+OPERATIONAL_URL = "http://fresneldevice/api/v1/system/operational"
+JOB_URL = "http://fresneldevice/api/v1/jobs/1"
+SYSTEM_URL = "http://fresneldevice/api/v1/system"
 SYSTEM_REPONSE = MockResponse(
     {
         "data": {
@@ -137,7 +137,7 @@ def mocked_requests_raises_connection_error(*args, **kwargs):
 
 def mocked_requests_post_success(*args, **kwargs):
     """Mocks a response to the post of a job accepted by the system."""
-    job_url = "http://fresneldevice/api/latest/jobs"
+    job_url = "http://fresneldevice/api/v1/jobs"
     if args[0] == job_url if args else kwargs["url"] == job_url:
         if list(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
             return MockResponse(None, 400)
@@ -147,7 +147,7 @@ def mocked_requests_post_success(*args, **kwargs):
 
 def mocked_requests_post_fail(*args, **kwargs):
     """Mocks a response to the post of a job not accepted by the system."""
-    job_url = "http://fresneldevice/api/latest/jobs"
+    job_url = "http://fresneldevice/api/v1/jobs"
     if args[0] == job_url if args else kwargs["url"] == job_url:
         if set(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
             return MockResponse(None, 400)
