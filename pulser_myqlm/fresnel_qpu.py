@@ -47,7 +47,7 @@ class FresnelQPU(QPUHandler):
     def __init__(
         self,
         base_uri: str | None,
-        version: str = "latest",
+        version: str = "v1",
         max_nbshots: int = DEFAULT_NUMBER_OF_SHOTS,
     ):
         super().__init__()
