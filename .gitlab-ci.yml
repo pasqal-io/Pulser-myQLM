@@ -13,7 +13,7 @@ stages:
 # only cache local items.
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  REGISTRY_URL: "9ygszqk0.gra7.container-registry.ovh.net"
+  REGISTRY_URL: ${PCS_HARBOR_URL}
   DOCKER_IMAGE: "$REGISTRY_URL/pulser-myqlm/pulser-myqlm"
   DOCKER_TAG: "$CI_COMMIT_REF_SLUG"
 
