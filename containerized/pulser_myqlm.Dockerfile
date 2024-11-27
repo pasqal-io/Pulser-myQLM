@@ -22,6 +22,3 @@ COPY ./VERSION.txt /opt/app/VERSION.txt
 COPY ./containerized/test_fresnel.py /opt/app/tests/test_fresnel.py
 COPY ./tests/conftest.py /opt/app/tests/conftest.py
 COPY ./tests/helpers /opt/app/tests/helpers
-
-# Run tests
-CMD ["pytest", "/opt/app/tests/test_fresnel.py"]

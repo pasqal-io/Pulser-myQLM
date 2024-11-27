@@ -73,5 +73,7 @@ build_and_push:
 docker-test:
   stage: docker-test
   image: $DOCKER_IMAGE:$DOCKER_TAG
+  script:
+    - pytest /opt/app/tests/test_fresnel.py
   dependencies:
     - build_and_push
