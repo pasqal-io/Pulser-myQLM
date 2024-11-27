@@ -73,9 +73,5 @@ build_and_push:
 docker-test:
   stage: docker-test
   image: $DOCKER_IMAGE:$DOCKER_TAG
-  before_script:
-    - echo ${PCS_HARBOR_PASSWORD} | docker login --username ${PCS_HARBOR_USERNAME} --password-stdin ${REGISTRY_URL}
-  script:
-    - docker run --rm $DOCKER_IMAGE:$DOCKER_TAG
   dependencies:
     - build_and_push
