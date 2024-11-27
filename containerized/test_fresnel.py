@@ -55,7 +55,9 @@ class TestRunSequenceFresnelEmulated:
         Running a job from a sequence using convert_sequence_to_job
         successfully.
         """
+        global PORT
         np.random.seed(123)
+        PORT += 1
         _, seq = schedule_seq
         # pulser-simulation in a Remote FresnelQPU is used
         # Deploying a FresnelQPU on a remote server using serve
@@ -86,6 +88,8 @@ class TestRunSequenceFresnelEmulated:
         Running a job from a sequence using convert_sequence_to_schedule
         successfully.
         """
+        global PORT
+        PORT += 1
         np.random.seed(123)
         _, seq = schedule_seq
         # pulser-simulation in a Remote FresnelQPU is used
@@ -121,6 +125,8 @@ class TestRunSequenceFresnelEmulated:
         Running a job if schedule is not equivalent to sequence
         successfully.
         """
+        global PORT
+        PORT += 1
         np.random.seed(123)
         _, seq = schedule_seq
         # pulser-simulation in a Remote FresnelQPU is used
@@ -196,6 +202,8 @@ class TestRunSequenceFresnelPasqos:
         Running a job from a sequence using convert_sequence_to_schedule
         successfully.
         """
+        global PORT
+        PORT += 1
         np.random.seed(123)
         _, seq = schedule_seq
         # pulser-simulation in a Remote FresnelQPU is used
