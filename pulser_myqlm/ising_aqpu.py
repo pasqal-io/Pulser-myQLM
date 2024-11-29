@@ -9,6 +9,7 @@ from functools import cached_property
 from typing import Union, cast
 
 import numpy as np
+import pulser
 from pulser import Sequence, sampler
 from pulser.channels import Rydberg
 from pulser.devices._device_datacls import COORD_PRECISION, BaseDevice
@@ -288,30 +289,120 @@ class IsingAQPU(QPUHandler):
         return schedule.to_job(nbshots=nbshots)
 
     @staticmethod
-    def convert_samples_to_result(result_samples: Counter | dict[str, int]) -> Result:
+    def convert_samples_to_result(
+        result_samples: Counter | dict[str, int],
+        atom_order: tuple[QubitId, ...] | None = None,
+        meas_basis: str = "ground-rydberg",
+    ) -> Result:
         """Converts the output of a sampling into a MyQLM Result.
 
         Args:
             result_samples: A dictionary of strings describing the measured states
                 and their respective counts.
+            atom_order: The order of the atoms in the bitstrings that represent 
+                the measured states. If not defined, the atoms are labeled from 0
+                to n_qubits.
+            meas_basis: The measurement basis. Defaults to ground-rydberg.
 
         Returns:
             Result: A myqlm Result associating each state with
-                its frequency of occurence in pulser_samples.
+                its frequency of occurence in result_samples.
         """
         n_samples = int(sum(result_samples.values()))
         # Associates to each measured state its frequency of occurence
-        meta_data = {"n_samples": str(n_samples)}
-        if result_samples:
-            meta_data["n_qubits"] = str(len(list(result_samples.keys())[0]))
+        meta_data = {"nbshots": str(n_samples), "meas_basis": meas_basis}
+
+        if not result_samples:
+            return Result(meta_data=meta_data)
+
+        n_qubits = str(len(list(result_samples.keys())[0]))
+        if atom_order:
+            if n_qubits != len(atom_order):
+                raise ValueError(
+                    "length of atom_order and keys of result_samples must match."
+                )
+            meta_data["atom_order"] = str(atom_order)
+        else:
+            meta_data["atom_order"] = str(tuple(i for i in range(n_qubits)))
 
         myqlm_result = Result(meta_data=meta_data)
         for state, counts in result_samples.items():
             myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
+        # In the Schedule, qubits are labelled {1, 2, ..., n_qubits}
+        # Match with the qubit_ids of the Register of the Sequence (see atom_order)
         myqlm_result.wrap_samples(
-            [QRegister(0, length=int(meta_data.get("n_qubits", 0)))]
+            [QRegister(0, length=n_qubits, qbits_list=[i for i in range(n_qubits)])]
         )
         return myqlm_result
+
+    @staticmethod
+    def convert_to_pulser_result(myqlm_result: Result) -> pulser.result.Result:
+        """Converts a MyQLM Result into a Pulser Result.
+        
+        If the myqlm Result comes from a sampling operation, then the returned type
+        is a SampledResult. In the other cases, the returned type is a 
+        SimulationResult. In this case, the samples can be obtained by running the
+        `get_samples` method.
+        
+        Arg:
+            myqlm_result: A MyQLM Result.
+            
+        Returns:
+            A pulser Result object, either SampledResult or SimulationResult.
+        """
+        # Associates to each measured state its frequency of occurence
+        samples: dict[str, int] = {}
+        if not myqlm_result.raw_data:
+            return pulser.result.SampledResult(
+                myqlm_result.meta_data.get("atom_order", []),
+                myqlm_result.meta_data.get("meas_basis", "ground-rydberg"),
+                samples
+            )
+        try:
+            atom_order = tuple(myqlm_result.meta_data["atom_order"])
+        except KeyError as k:
+            raise KeyError("atom_order must be in result.meta_data.") from k
+        except (ValueError, TypeError) as e:
+            raise type(e)("atom_order must be castable to a tuple.")
+        n_qubits = len(atom_order)
+        if "meas_basis" not in myqlm_result.meta_data:
+            raise KeyError("meas_basis must be in result.meta_data.")
+
+        nbshots = myqlm_result.meta_data.get("nbshots", 0)
+
+        try:
+            n_samples = int(nbshots)
+        except (ValueError, TypeError) as e:
+            raise type(e)(
+                "n_samples must be castable to an integer strictly greater than 0."
+            )
+        if n_samples < 0:
+            raise ValueError("nbshots must be positive.")
+        for sample in myqlm_result.raw_data:
+            if len(sample.state.bitstring) > n_qubits:
+                raise ValueError(
+                    f"State {sample.state} is incompatible with number of qubits"
+                    f" declared {n_qubits}."
+                )
+            # If n_samples == 0, then keep the probability
+            if n_samples == 0:
+                samples[sample.state.bitstring.zfill(n_qubits)] = sample.probability
+                continue
+            # Otherwise, multiply the probability by the number of samples
+            counts = sample.probability * n_samples
+            if not np.isclose(counts % 1, 0, rtol=1e-5):
+                raise ValueError(
+                    f"Probability associated with state {sample.state} does not "
+                    f"make an integer count for n_samples: {n_samples}."
+                )
+            samples[sample.state.bitstring.zfill(n_qubits)] = int(counts)
+        # If n_samples == 0, we have a probability distribution
+        if n_samples == 0:
+            # We output a SimulationResult
+            return pulser_simulation.result.
+        else:
+            # We output a SampledResult
+            return pulser.result.SampledResult(atom_order, meas_basis, samples)
 
     @staticmethod
     def convert_result_to_samples(myqlm_result: Result) -> Counter:
@@ -331,63 +422,7 @@ class IsingAQPU(QPUHandler):
             A dictionary of strings describing the measured states
                 and their respective counts.
         """
-        # Associates to each measured state its frequency of occurence
-        samples: dict[str, int] = {}
-        if not myqlm_result.raw_data:
-            return Counter(samples)
-        # raw_data is not empty so n_samples and n_qubits must be defined
-        if not (
-            isinstance(myqlm_result.meta_data, dict)
-            and "n_samples" in myqlm_result.meta_data
-            and "n_qubits" in myqlm_result.meta_data
-        ):
-            raise ValueError(
-                "Meta data must be a dictionary with n_samples and n_qubits defined."
-            )
-        try:
-            n_qubits = int(myqlm_result.meta_data["n_qubits"])
-        except (ValueError, TypeError) as e:
-            raise type(e)("n_qubits must be castable to an integer.")
-        try:
-            n_samples = int(myqlm_result.meta_data["n_samples"])
-            if n_samples <= 0:
-                raise ValueError
-        except (ValueError, TypeError) as e:
-            raise type(e)(
-                "n_samples must be castable to an integer strictly greater than 0."
-            )
 
-        for sample in myqlm_result.raw_data:
-            if len(sample.state.bitstring) > n_qubits:
-                raise ValueError(
-                    f"State {sample.state} is incompatible with number of qubits"
-                    f" declared {n_qubits}."
-                )
-            counts = sample.probability * n_samples
-            if not np.isclose(counts % 1, 0, rtol=1e-5):
-                raise ValueError(
-                    f"Probability associated with state {sample.state} does not "
-                    f"make an integer count for n_samples: {n_samples}."
-                )
-            samples[sample.state.bitstring.zfill(n_qubits)] = int(counts)
-        return Counter(samples)
-
-    def submit(self, batch: Batch) -> BatchResult:
-        """Executes a batch of jobs and returns the corresponding list of Results.
-
-        If the qpu attribute is None, pulser_simulation is used to simulate the Pulser
-        Sequence associated with each MyQLM Job in the batch.
-
-        Args:
-            batch: a batch of jobs. If a single job is provided, the job is embedded
-                into a Batch, executed, and the first result is returned.
-
-        Returns:
-            A batch result.
-        """
-        if self.qpu is None:
-            return super().submit(batch)
-        return self.qpu.submit(batch)
 
     def submit_job(self, job: Job) -> Result:
         """Simulate a MyQLM Job using pulser_simulation.
@@ -405,11 +440,6 @@ class IsingAQPU(QPUHandler):
         Returns:
             A MyQLM Result.
         """
-        if self.qpu is not None:
-            raise ValueError(
-                "`submit_job` must not be used if the qpu attribute is defined,"
-                " use the `submit` method instead."
-            )
         if job.schedule is None:
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
@@ -417,6 +447,18 @@ class IsingAQPU(QPUHandler):
             )
         other_dict = deserialize_other(job.schedule._other)
         modulation = other_dict.get("modulation", False)
-        return self.convert_samples_to_result(
-            simulate_seq(other_dict["seq"], modulation, job.nbshots)
+        atom_order = other_dict["seq"].get_register().qubit_ids
+        meas_basis = other_dict["seq"].get_measurement_basis()
+        if self.qpu is None:
+            return self.convert_samples_to_result(
+                simulate_seq(other_dict["seq"], modulation, job.nbshots),
+                atom_order,
+                meas_basis
+            )
+        return self.qpu.submit(
+            job,
+            meta_data={
+                "atom_order": str(atom_order),
+                "meas_basis": meas_basis
+            }
         )
