@@ -112,7 +112,7 @@ class TestRunSequenceFresnelEmulated:
             (Sample(probability=0.001, state=4), "|100>"),
         ]
         compare_results_raw_data(result.raw_data, exp_result)
-        assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
+        assert IsingAQPU.convert_result_to_samples(result) == {"000": 1998, "100": 2}
 
     def test_run_sequence_fresnel_emulated_schedule_not_equivalent_to_sequence(
         self, schedule_seq: tuple[Schedule, Sequence]
@@ -148,7 +148,7 @@ class TestRunSequenceFresnelEmulated:
             (Sample(probability=0.001, state=4), "|100>"),
         ]
         compare_results_raw_data(result.raw_data, exp_result)
-        assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
+        assert IsingAQPU.convert_result_to_samples(result) == {"000": 1998, "100": 2}
 
 
 @pytest.mark.skipif(not PASQOS_E2E_TEST_ENABLED, reason="CI can only run emulation.")
@@ -218,4 +218,4 @@ class TestRunSequenceFresnelPasqos:
             (Sample(probability=0.001, state=4), "|100>"),
         ]
         compare_results_raw_data(result.raw_data, exp_result)
-        assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
+        assert IsingAQPU.convert_result_to_samples(result) == {"000": 1998, "100": 2}
