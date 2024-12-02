@@ -156,7 +156,7 @@ class TestRunSequenceFresnelPasqos:
     """Test running Fresnel sequence with Pasqos."""
 
     def test_run_sequence_fresnel_pasqos_from_sequence_to_job(
-        schedule_seq: tuple[Schedule, Sequence]
+        self, schedule_seq: tuple[Schedule, Sequence]
     ):
         """Test simulation of a Sequence using pulser-simulation.
 
@@ -187,7 +187,7 @@ class TestRunSequenceFresnelPasqos:
         assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
 
     def test_run_sequence_fresnel_pasqos_from_sequence_to_schedule(
-        schedule_seq: tuple[Schedule, Sequence]
+        self, schedule_seq: tuple[Schedule, Sequence]
     ):
         """Test simulation of a Sequence using pulser-simulation.
 
