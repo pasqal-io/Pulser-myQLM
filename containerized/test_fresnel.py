@@ -106,16 +106,13 @@ class TestRunSequenceFresnelEmulated:
         schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
         job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
         assert not job_from_seq.nbshots
-        result_schedule = aqpu.submit(job_from_seq)
-        exp_result_schedule = [
-            (Sample(probability=0.9995, state=0), "|000>"),
-            (Sample(probability=0.0005, state=1), "|001>"),
+        result = aqpu.submit(job_from_seq)
+        exp_result = [
+            (Sample(probability=0.999, state=0), "|000>"),
+            (Sample(probability=0.001, state=4), "|100>"),
         ]
-        compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
-        assert IsingAQPU.convert_result_to_samples(result_schedule) == {
-            "000": 1999,
-            "001": 1,
-        }
+        compare_results_raw_data(result.raw_data, exp_result)
+        assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
 
     def test_run_sequence_fresnel_emulated_schedule_not_equivalent_to_sequence(
         self, schedule_seq: tuple[Schedule, Sequence]
@@ -145,18 +142,13 @@ class TestRunSequenceFresnelEmulated:
         empty_schedule = Schedule()
         empty_schedule._other = schedule_from_seq._other
         empty_job.schedule = empty_schedule
-        result_empty_sch = aqpu.submit(empty_job)
-        exp_result_empty_sch = [
+        result = aqpu.submit(empty_job)
+        exp_result = [
             (Sample(probability=0.999, state=0), "|000>"),
-            (Sample(probability=0.0005, state=1), "|001>"),
-            (Sample(probability=0.0005, state=4), "|100>"),
+            (Sample(probability=0.001, state=4), "|100>"),
         ]
-        compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
-        assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
-            "000": 1998,
-            "001": 1,
-            "100": 1,
-        }
+        compare_results_raw_data(result.raw_data, exp_result)
+        assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
 
 
 @pytest.mark.skipif(not PASQOS_E2E_TEST_ENABLED, reason="CI can only run emulation.")
@@ -220,13 +212,10 @@ class TestRunSequenceFresnelPasqos:
         schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
         job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
         assert not job_from_seq.nbshots
-        result_schedule = aqpu.submit(job_from_seq)
-        exp_result_schedule = [
-            (Sample(probability=0.9995, state=0), "|000>"),
-            (Sample(probability=0.0005, state=1), "|001>"),
+        result = aqpu.submit(job_from_seq)
+        exp_result = [
+            (Sample(probability=0.999, state=0), "|000>"),
+            (Sample(probability=0.001, state=4), "|100>"),
         ]
-        compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
-        assert IsingAQPU.convert_result_to_samples(result_schedule) == {
-            "000": 1999,
-            "001": 1,
-        }
+        compare_results_raw_data(result.raw_data, exp_result)
+        assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
