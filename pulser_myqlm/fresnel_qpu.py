@@ -190,11 +190,11 @@ class FresnelQPU(QPUHandler):
                 )
             time.sleep(JOB_POLLING_INTERVAL_SECONDS)
             retries += 1
-        if retries > JOB_POLLING_MAX_RETRIES:
-            raise QPUException(
-                ErrorType.NONERESULT,
-                "Too many retries polling job results.",
-            )
+            if retries > JOB_POLLING_MAX_RETRIES:
+                raise QPUException(
+                    ErrorType.NONERESULT,
+                    "Too many retries polling job results.",
+                )
 
         # Check that the job submission went well
         if job_response["status"] == "ERROR":
