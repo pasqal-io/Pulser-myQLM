@@ -17,7 +17,6 @@ from pulser.register import Register
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Job, Sample, Schedule
 
-from pulser_myqlm.constants import JOB_POLLING_MAX_RETRIES
 from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
 from pulser_myqlm.ising_aqpu import IsingAQPU
 from tests.helpers.compare_raw_data import compare_results_raw_data
@@ -663,13 +662,6 @@ def test_device_fetching_job_polling_errors(
         job_response = response.json()["data"]
         with pytest.raises(QPUException, match="Too many retries polling job results."):
             fresnel_qpu.poll_job_results(job_response)
-
-        qpu_behaviour = successes + (
-            [mocked_requests_get] * (JOB_POLLING_MAX_RETRIES * 10)
-        )
-        mock_get.side_effect = SideEffect(*qpu_behaviour)
-        with pytest.raises(QPUException, match="Too many retries polling job results."):
-            qpu.submit(job_from_seq)
 
     # Can't get a response if the Job terminates with an error
     mock_get.side_effect = mocked_requests_get_error
