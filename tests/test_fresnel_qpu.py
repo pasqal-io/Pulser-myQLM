@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from contextlib import nullcontext
 from importlib.metadata import version
@@ -17,7 +18,6 @@ from pulser.register import Register
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Job, Sample, Schedule
 
-from pulser_myqlm.constants import JOB_POLLING_MAX_RETRIES
 from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
 from pulser_myqlm.ising_aqpu import IsingAQPU
 from tests.helpers.compare_raw_data import compare_results_raw_data
@@ -593,7 +593,7 @@ def test_job_polling_success(_, mock_get, remote_fresnel, schedule_seq):
 @pytest.mark.parametrize("remote_fresnel", [False, True])
 @pytest.mark.parametrize("base_uri", base_uris)
 def test_device_fetching_job_polling_errors(
-    _, mock_get, remote_fresnel, base_uri, schedule_seq
+    _, mock_get, remote_fresnel, base_uri, schedule_seq, caplog
 ):
     """Test fetching the Device and polling the QPU under some specific errors."""
     global PORT
@@ -661,16 +661,12 @@ def test_device_fetching_job_polling_errors(
             qpu.get_specs()
         response = requests.post(post_address, json=post_json)
         job_response = response.json()["data"]
-        with pytest.raises(QPUException, match="Too many retries polling job results."):
-            fresnel_qpu.poll_job_results(job_response)
-
-        qpu_behaviour = successes + (
-            [mocked_requests_get] * (JOB_POLLING_MAX_RETRIES * 10)
+        mock_get.side_effect = SideEffect(
+            *[mocked_requests_get, mocked_requests_get_success]
         )
-        mock_get.side_effect = SideEffect(*qpu_behaviour)
-        with pytest.raises(QPUException, match="Too many retries polling job results."):
-            qpu.submit(job_from_seq)
-
+        with caplog.at_level(logging.ERROR):
+            fresnel_qpu.poll_job_results(job_response)
+        assert "trying again in" in caplog.text
     # Can't get a response if the Job terminates with an error
     mock_get.side_effect = mocked_requests_get_error
     response = requests.post(post_address, json=post_json)
