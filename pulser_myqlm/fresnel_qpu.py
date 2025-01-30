@@ -18,7 +18,6 @@ from qat.core.qpu import QPUHandler
 from pulser_myqlm.constants import (
     DEFAULT_NUMBER_OF_SHOTS,
     JOB_POLLING_INTERVAL_SECONDS,
-    JOB_POLLING_MAX_RETRIES,
     QPU_POLLING_INTERVAL_SECONDS,
     TEMP_DEVICE,
 )
@@ -161,14 +160,10 @@ class FresnelQPU(QPUHandler):
                 message="Results are only available if base_uri is defined",
             )
         retries = 0
-        while (
-            job_response["status"]
-            not in [
-                "ERROR",
-                "DONE",
-            ]
-            and retries <= JOB_POLLING_MAX_RETRIES
-        ):
+        while job_response["status"] not in [
+            "ERROR",
+            "DONE",
+        ]:
             try:
                 response = requests.get(self.base_uri + f"/jobs/{job_response['uid']}")
                 response.raise_for_status()
@@ -190,11 +185,6 @@ class FresnelQPU(QPUHandler):
                 )
             time.sleep(JOB_POLLING_INTERVAL_SECONDS)
             retries += 1
-        if retries > JOB_POLLING_MAX_RETRIES:
-            raise QPUException(
-                ErrorType.NONERESULT,
-                "Too many retries polling job results.",
-            )
 
         # Check that the job submission went well
         if job_response["status"] == "ERROR":
