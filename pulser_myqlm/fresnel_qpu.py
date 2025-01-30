@@ -246,11 +246,8 @@ class FresnelQPU(QPUHandler):
         }
         if self.base_uri is None:
             pulser_results = simulate_seq(seq, modulation, payload["nb_run"])
-            return IsingAQPU.convert_samples_to_result(
-                pulser_results,
-                seq.get_register().qubit_ids,
-                seq.get_measurement_basis()
-            )
+            myqlm_result = IsingAQPU.convert_samples_to_result(pulser_results)
+            return myqlm_result
         response = requests.post(self.base_uri + "/jobs", json=payload)
         if response.status_code != 200:
             raise QPUException(
@@ -265,7 +262,5 @@ class FresnelQPU(QPUHandler):
 
         # Convert the output of the API into a MyQLM Result
         return IsingAQPU.convert_samples_to_result(
-            json.loads(job_response["result"])["counter"],
-            seq.get_register().qubit_ids,
-            seq.get_measurement_basis()
+            json.loads(job_response["result"])["counter"]
         )
