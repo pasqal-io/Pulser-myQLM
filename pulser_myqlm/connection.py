@@ -6,7 +6,8 @@ import pulser
 import qat
 from pulser.json.exceptions import DeserializeDeviceError
 
-from pulser_myqlm import IsingAQPU
+from pulser_myqlm.ising_aqpu import IsingAQPU
+from pulser_myqlm.fresnel_qpu import FresnelQPU
 
 
 class PulserQLMaaSConnection(pulser.backend.remote.RemoteConnection):
@@ -26,7 +27,7 @@ class PulserQLMaaSConnection(pulser.backend.remote.RemoteConnection):
         open: bool = False,
         batch_id: str | None = None,
         **kwargs: typing.Any,
-    ) -> pulser.backend.remote.RemoteResult:
+    ) -> pulser.backend.remote.RemoteResults:
         """Submits the sequence for execution on a remote Pasqal backend."""
         if open:
             raise NotImplementedError(
@@ -59,18 +60,16 @@ class PulserQLMaaSConnection(pulser.backend.remote.RemoteConnection):
         for qpu_id, device in self.fetch_available_devices().items():
             if sequence.device.name == device.name:
                 break
-        connected_qpu = self._connection.get_qpu(qpu_id)
+        connected_qpu = self._connection.get_qpu(qpu_id)()
         jobs = []
         for params in job_params:
             if sequence.is_parametrized() or sequence.is_register_mappable():
                 vars = params.get("variables", {})
-                built_seq = sequence.build(**vars)
-            else:
-                built_seq = sequence.copy()
-            assert not (built_seq.is_parametrized() or sequence.is_register_mappable())
+                sequence = sequence.build(**vars)
+            assert not (sequence.is_parametrized() or sequence.is_register_mappable())
             jobs.append(
                 IsingAQPU.convert_sequence_to_job(
-                    built_seq,
+                    sequence,
                     nbshots=params.get("runs", 0),
                     modulation=False,
                 )
@@ -79,20 +78,27 @@ class PulserQLMaaSConnection(pulser.backend.remote.RemoteConnection):
         res_info = async_res.get_info()
         if wait:
             async_res.join()
-        return pulser.RemoteResults(res_info.id, self._connection)
+        return pulser.backend.remote.RemoteResults(res_info.id, self)
 
     def fetch_available_devices(self) -> dict[str, pulser.devices.Device]:
         """Fetches the devices available through this connection."""
         qpus = self._connection.get_qpus()
         devices = {}
         for qpu in qpus:
+            if "PasqalQPU" in qpu.name:
+                devices[qpu.name] = FresnelQPU(None).device
+                continue
+            try:
+                real_qpu = self._connection.get_qpu(qpu)()
+            except RuntimeError:
+                continue
             try:
                 device = pulser.devices.Device.from_abstract_repr(
-                    qpu.get_specs().description
+                    real_qpu.get_specs().description
                 )
             except (TypeError, DeserializeDeviceError):
                 continue
-            devices[qpu] = device
+            devices[qpu.name] = device
         return devices
 
     def _fetch_result(
@@ -114,7 +120,7 @@ class PulserQLMaaSConnection(pulser.backend.remote.RemoteConnection):
 
         It returns a dictionary mapping the job ID to its status and results.
         """
-        status = self.get_batch_status(batch_id)
+        status = self._get_batch_status(batch_id)
         result = None
         if status.value == qat.comm.qlmaas.ttypes.JobStatus.DONE:
             result = self._connection.get_job(batch_id).get_result
