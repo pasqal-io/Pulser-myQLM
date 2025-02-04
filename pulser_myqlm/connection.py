@@ -1,11 +1,15 @@
 """Defines the PulserMyQLMBackend."""
 
-import pulser
-from pulser.json.exceptions import DeserializeDeviceError
-import qat
-from pulser_myqlm import IsingAQPU 
+import typing
 
-class PulserQLMaaSConnection(pulser.RemoteConnection):
+import pulser
+import qat
+from pulser.json.exceptions import DeserializeDeviceError
+
+from pulser_myqlm import IsingAQPU
+
+
+class PulserQLMaaSConnection(pulser.backend.remote.RemoteConnection):
     """The connection to a MyQLM QPU."""
 
     def __init__(self, connection: qat.qlmaas.QLMaaSConnection):
@@ -17,26 +21,26 @@ class PulserQLMaaSConnection(pulser.RemoteConnection):
 
     def submit(
         self,
-        sequence: Sequence,
+        sequence: pulser.Sequence,
         wait: bool = False,
         open: bool = False,
         batch_id: str | None = None,
-        **kwargs: Any,
-    ) -> RemoteResult:
+        **kwargs: typing.Any,
+    ) -> pulser.backend.remote.RemoteResult:
         """Submits the sequence for execution on a remote Pasqal backend."""
         if open:
             raise NotImplementedError(
                 "Open batches are not implemented in Qaptiva Access."
             )
-        sequence = self.add_measurement_to_sequence(sequence)
-        job_params: list[JobParams] = pulser.json.utils.make_json_compatible(
-            kwargs.get("job_params", [])
+        sequence = self._add_measurement_to_sequence(sequence)
+        job_params: list[pulser.backend.remote.JobParams] = (
+            pulser.json.utils.make_json_compatible(kwargs.get("job_params", []))
         )
         mimic_qpu: bool = kwargs.get("mimic_qpu", False)
         if mimic_qpu:
             sequence = self.update_sequence_device(sequence, job_params)
-            QPUBackend.validate_job_params(job_params, sequence.device.max_runs)
-        
+            pulser.QPUBackend.validate_job_params(job_params, sequence.device.max_runs)
+
         if sequence.is_parametrized() or sequence.is_register_mappable():
 
             for params in job_params:
@@ -52,7 +56,7 @@ class PulserQLMaaSConnection(pulser.RemoteConnection):
             )
         # Create a new batch by submitting to the targetted qpu
         # Find the targeted QPU
-        for (qpu_id, device) in self.fetch_available_devices().items():
+        for qpu_id, device in self.fetch_available_devices().items():
             if sequence.device.name == device.name:
                 break
         connected_qpu = self._connection.get_qpu(qpu_id)
@@ -77,7 +81,7 @@ class PulserQLMaaSConnection(pulser.RemoteConnection):
             async_res.join()
         return pulser.RemoteResults(res_info.id, self._connection)
 
-    def fetch_available_devices(self) -> dict[str, Device]:
+    def fetch_available_devices(self) -> dict[str, pulser.devices.Device]:
         """Fetches the devices available through this connection."""
         qpus = self._connection.get_qpus()
         devices = {}
@@ -86,21 +90,23 @@ class PulserQLMaaSConnection(pulser.RemoteConnection):
                 device = pulser.devices.Device.from_abstract_repr(
                     qpu.get_specs().description
                 )
-            except TypeError, DeserializeDeviceError:
+            except (TypeError, DeserializeDeviceError):
                 continue
             devices[qpu] = device
         return devices
-    
+
     def _fetch_result(
         self, batch_id: str, job_ids: list[str] | None
-    ) -> typing.Sequence[Result]:
+    ) -> typing.Sequence[qat.core.BatchResult | qat.core.Result]:
         """Fetches the results of a completed batch."""
         # Returns an error if job is not available
         return self._connection.get_job(batch_id).get_result()
 
     def _query_job_progress(
         self, batch_id: str
-    ) -> tuple[qat.comm.qlmaas.ttypes.JobStatus, qat.core.BatchResult | qat.core.Result | None]]:
+    ) -> tuple[
+        qat.comm.qlmaas.ttypes.JobStatus, qat.core.BatchResult | qat.core.Result | None
+    ]:
         """Fetches the status and results of all the jobs in a batch.
 
         Unlike `_fetch_result`, this method does not raise an error if some
@@ -113,17 +119,15 @@ class PulserQLMaaSConnection(pulser.RemoteConnection):
         if status.value == qat.comm.qlmaas.ttypes.JobStatus.DONE:
             result = self._connection.get_job(batch_id).get_result
         return (status, result)
-    
+
     def _get_batch_status(self, batch_id: str) -> qat.comm.qlmaas.ttypes.JobStatus:
         """Gets the status of a batch from its ID."""
         return self._connection.get_job(batch_id).get_status()
 
     def _get_job_ids(self, batch_id: str) -> list[str]:
         """Gets all the job IDs within a batch."""
-        raise NotImplementedError(
-            "There is no job IDs through this remote connection."
-        )
-    
+        raise NotImplementedError("There is no job IDs through this remote connection.")
+
     def _close_batch(self, batch_id: str) -> None:
         """Closes a batch using its ID."""
         raise NotImplementedError(  # pragma: no cover
