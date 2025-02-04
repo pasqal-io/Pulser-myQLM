@@ -6,8 +6,8 @@ import pulser
 import qat
 from pulser.json.exceptions import DeserializeDeviceError
 
-from pulser_myqlm.ising_aqpu import IsingAQPU
 from pulser_myqlm.fresnel_qpu import FresnelQPU
+from pulser_myqlm.ising_aqpu import IsingAQPU
 
 
 class PulserQLMaaSConnection(pulser.backend.remote.RemoteConnection):
