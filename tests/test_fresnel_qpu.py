@@ -15,6 +15,7 @@ from pulser import Pulse, Sequence
 from pulser.devices import MockDevice
 from pulser.json.abstract_repr.deserializer import deserialize_device
 from pulser.register import Register
+from pulser.register.special_layouts import TriangularLatticeLayout
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Job, Sample, Schedule
 
@@ -251,6 +252,17 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
     }
 
 
+class SideEffect:
+    """Helper class to iterate through functions when calling side_effect."""
+
+    def __init__(self, *fns):
+        self.fs = iter(fns)
+
+    def __call__(self, *args, **kwargs):
+        f = next(self.fs)
+        return f(*args, **kwargs)
+
+
 BASE_URI = "http://fresneldevice/api"
 base_uris = [BASE_URI, None]
 
@@ -271,6 +283,13 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
     with pytest.raises(QPUException, match="Connection with API failed"):
         FresnelQPU(base_uri="")
 
+    # Can connect even if first connections fail
+    SideEffect(
+        mocked_requests_get_400_exception,
+        mocked_requests_get_500_exception,
+        mocked_requests_raises_connection_error,
+        mocked_requests_get_success,
+    )
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
 
     # Deploy the QPU on a Qaptiva server
@@ -278,9 +297,16 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
         PORT += 1
         server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
         server_thread.daemon = True
+        # Can create server even if first connections fail
+        SideEffect(
+            mocked_requests_get_400_exception,
+            mocked_requests_get_500_exception,
+            mocked_requests_raises_connection_error,
+            mocked_requests_get_success,
+        )
         server_thread.start()
 
-    # Can't submit if the Device of the Sequence does not match the TEMP_DEVICE
+    # Can't submit if Rydberg level of the Device's Sequence don't match the QPU's
     _, seq = schedule_seq
     mock_seq = _switch_seq_device(seq, MockDevice)
     job_from_seq = IsingAQPU.convert_sequence_to_job(mock_seq)
@@ -288,14 +314,49 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
     with pytest.raises(QPUException, match="The Sequence in job.schedule._other"):
         qpu.submit(job_from_seq)
 
+    # Can fetch device even if first connections fail
+    SideEffect(
+        mocked_requests_get_400_exception,
+        mocked_requests_get_500_exception,
+        mocked_requests_raises_connection_error,
+        mocked_requests_get_success,
+    )
     specs = qpu.get_specs()
     assert (device := deserialize_device(specs.description)) == TEMP_DEVICE
     # Can't simulate if Register is not defined from a layout
+    assert device.requires_layout  # if QPU's device requires a layout
     seq = Sequence(Register.triangular_lattice(2, 2, spacing=5), device)
     seq.declare_channel("rydberg_global", "rydberg_global")
     seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
     with pytest.raises(QPUException, match="The Register of the Sequence"):
+        qpu.submit(job_from_seq)
+
+    # Can't simulate if layout is not among calibrated layouts
+    assert not device.accepts_new_layouts  # if QPU don't accept new layouts
+    seq = Sequence(TriangularLatticeLayout(10, 5).define_register(1, 2, 5), device)
+    seq.declare_channel("rydberg_global", "rydberg_global")
+    seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(QPUException, match="The Register of the Sequence"):
+        qpu.submit(job_from_seq)
+
+    # Can't simulate if Sequence is empty
+    assert not device.accepts_new_layouts  # if QPU don't accept new layouts
+    seq = Sequence(schedule_seq[1].register, device)  # Sequence with a correct register
+    seq.declare_channel("rydberg_global", "rydberg_global")
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(
+        QPUException, match="The Sequence should contain at least one Pulse"
+    ):
+        qpu.submit(job_from_seq)
+
+    # adding a delay does not make the sequence "non empty"
+    seq.delay(100, "rydberg_global")
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(
+        QPUException, match="The Sequence should contain at least one Pulse"
+    ):
         qpu.submit(job_from_seq)
 
 
@@ -365,17 +426,6 @@ def test_check_system(_):
             fresnel_qpu.check_system(raise_error=True)
 
 
-class SideEffect:
-    """Helper class to iterate through functions when calling side_effect."""
-
-    def __init__(self, *fns):
-        self.fs = iter(fns)
-
-    def __call__(self, *args, **kwargs):
-        f = next(self.fs)
-        return f(*args, **kwargs)
-
-
 @mock.patch("pulser_myqlm.fresnel_qpu.requests.post")
 @mock.patch("pulser_myqlm.fresnel_qpu.requests.get")
 @mock.patch("pulser_myqlm.constants.QPU_POLLING_INTERVAL_SECONDS")
@@ -419,7 +469,13 @@ def test_non_operational_qpu(
     # Set response to non operational for first polling atempt
     # Set response to success in second polling attempt
     mock_get.side_effect = SideEffect(
-        mocked_requests_get_non_operational, mocked_requests_get_success
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_success,
     )
     with (
         pytest.warns(UserWarning, match="QPU not operational, will try again in")
@@ -431,7 +487,13 @@ def test_non_operational_qpu(
     # Set response to non operational for first polling atempt
     # Set response to success in second polling attempt
     mock_get.side_effect = SideEffect(
-        mocked_requests_get_non_operational, mocked_requests_get_success
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_success,
     )
     if remote_fresnel:
         PORT += 1
@@ -446,7 +508,7 @@ def test_non_operational_qpu(
         # Wait for the server to initialize
         if base_uri:
             # Sleeping time defined by experiment
-            time.sleep(5)
+            time.sleep(55)
     qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
 
     # Simulate Sequence using Pulser Simulation
@@ -457,10 +519,14 @@ def test_non_operational_qpu(
     mock_get.side_effect = SideEffect(mocked_requests_get_non_operational)
     specs = qpu.get_specs()
     assert deserialize_device(specs.description) == TEMP_DEVICE
-    # Set response to non operational for first polling atempt
+    # Set response to non operational for first polling attempt
     # Set response to success in second polling attempt
     # Set response to success for querying results
     mock_get.side_effect = SideEffect(
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
+        mocked_requests_get_non_operational,
         mocked_requests_get_non_operational,
         mocked_requests_get_non_operational,
         mocked_requests_get_non_operational,

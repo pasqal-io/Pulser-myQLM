@@ -38,6 +38,7 @@
     "max_sequence_duration": 10000,
     "max_runs": 2000,
     "reusable_channels": false,
+    "accepts_new_layouts": false,
     "pre_calibrated_layouts":
     [
         {

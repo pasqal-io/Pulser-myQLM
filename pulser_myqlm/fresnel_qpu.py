@@ -50,6 +50,7 @@ class FresnelQPU(QPUHandler):
         super().__init__()
         self.max_nbshots = max_nbshots
         self.base_uri = None if base_uri is None else base_uri + "/" + version
+        self.is_operational
 
     @property
     def is_operational(self) -> bool:
@@ -159,7 +160,8 @@ class FresnelQPU(QPUHandler):
             )
         while job_response["status"] not in ["ERROR", "DONE"]:
             try:
-                response = get_url(self.base_uri + f"/jobs/{job_response['uid']}")
+                response = requests.get(self.base_uri + f"/jobs/{job_response['uid']}")
+                response.raise_for_status()
                 job_response = response.json()["data"]
             except requests.ConnectionError as e:
                 LOGGER.error(
@@ -226,7 +228,7 @@ class FresnelQPU(QPUHandler):
                 f"compatible with the specs of the QPU: {self.device.specs}. Got "
                 f"error {repr(e)}",
             )
-        if self.device.requires_layout and seq.register.layout is None:
+        if current_device.requires_layout and seq.register.layout is None:
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
                 message=(
@@ -235,8 +237,8 @@ class FresnelQPU(QPUHandler):
                 ),
             )
         if (
-            not self.device.accepts_new_layouts
-            and not self.device.register_is_from_calibrated_layout(seq.register)
+            not current_device.accepts_new_layouts
+            and not current_device.register_is_from_calibrated_layout(seq.register)
         ):
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
