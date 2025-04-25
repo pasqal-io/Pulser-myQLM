@@ -285,9 +285,9 @@ def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
 @pytest.mark.parametrize("device_type", ["raman", "local"])
 def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
     """Testing IsingAQPU.convert_sequence_to_schedule."""
-    # An empty sequence returns an empty Schedule
+    # An empty sequence returns a Schedule of duration 0
     seq = Sequence(test_ising_qpu.register, MockDevice)
-    assert Schedule() == IsingAQPU.convert_sequence_to_schedule(seq)
+    assert 0 == IsingAQPU.convert_sequence_to_schedule(seq).tmax
     # Conversion only works for Rydberg Global channel
     # Does not work if a Raman Global channel is declared
     if device_type == "raman":
