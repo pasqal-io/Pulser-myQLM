@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 import warnings
 from typing import Any, cast
@@ -22,10 +21,9 @@ from pulser_myqlm.constants import (
     TEMP_DEVICE,
 )
 from pulser_myqlm.helpers.deserialize_other import deserialize_other
+from pulser_myqlm.helpers.requests import LOGGER, get_url, post_data_at_url
 from pulser_myqlm.helpers.simulate_seq import simulate_seq
 from pulser_myqlm.ising_aqpu import IsingAQPU
-
-logger = logging.getLogger(__name__)
 
 
 class FresnelQPU(QPUHandler):
@@ -52,19 +50,19 @@ class FresnelQPU(QPUHandler):
         super().__init__()
         self.max_nbshots = max_nbshots
         self.base_uri = None if base_uri is None else base_uri + "/" + version
-        self.is_operational  # Check that base_uri is correct
 
     @property
     def is_operational(self) -> bool:
         """Returns whether or not the system is operational."""
         if self.base_uri is None:
             return True
-        response = requests.get(url=self.base_uri + "/system/operational")
-        if response.status_code != 200:
+        try:
+            response = get_url(url=self.base_uri + "/system/operational")
+        except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.ABORT,
                 message="Connection with API failed, make sure the address "
-                f"{self.base_uri} is correct.",
+                f"{self.base_uri} is correct. Got error: {repr(e)}",
             )
         return cast(str, response.json()["data"]["operational_status"]) == "UP"
 
@@ -74,13 +72,13 @@ class FresnelQPU(QPUHandler):
         if self.base_uri is None:
             return TEMP_DEVICE.to_abstract_repr()
         try:
-            response = requests.get(self.base_uri + "/system")
-            response.raise_for_status()
-        except (requests.ConnectionError, requests.HTTPError) as e:
+            response = get_url(self.base_uri + "/system")
+        except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.NONERESULT,
-                "An error occured fetching the Device implemented by the QPU.",
-            ) from e
+                "An error occured fetching the Device implemented by the QPU. "
+                f"Got {repr(e)}",
+            )
         return json.dumps(response.json()["data"]["specs"])
 
     @property
@@ -159,32 +157,31 @@ class FresnelQPU(QPUHandler):
                 ErrorType.ABORT,
                 message="Results are only available if base_uri is defined",
             )
-        retries = 0
-        while job_response["status"] not in [
-            "ERROR",
-            "DONE",
-        ]:
+        while job_response["status"] not in ["ERROR", "DONE"]:
             try:
-                response = requests.get(self.base_uri + f"/jobs/{job_response['uid']}")
-                response.raise_for_status()
+                response = get_url(self.base_uri + f"/jobs/{job_response['uid']}")
                 job_response = response.json()["data"]
             except requests.ConnectionError as e:
-                logger.error(
-                    f"Job request raised Connection Error: {e},"
+                LOGGER.error(
+                    f"Job request raised Connection Error: {repr(e)},"
                     + f" trying again in {JOB_POLLING_INTERVAL_SECONDS}s",
                 )
             except requests.HTTPError as e:
                 if 400 <= response.status_code < 500:
                     raise QPUException(
                         ErrorType.NONERESULT,
-                        f"An error occured fetching your results: {e}",
-                    ) from e
-                logger.error(
-                    f"Job request returned a {response.status_code} code: {e},"
+                        f"An error occured fetching your results: {repr(e)}",
+                    )
+                LOGGER.error(
+                    f"Job request returned a {response.status_code} code: {repr(e)},"
                     + f" trying again in {JOB_POLLING_INTERVAL_SECONDS}s"
                 )
+            except requests.exceptions.RequestException as e:  # other requests error
+                raise QPUException(
+                    ErrorType.NONERESULT,
+                    f"An error occured fetching your results: {repr(e)}",
+                )
             time.sleep(JOB_POLLING_INTERVAL_SECONDS)
-            retries += 1
 
         # Check that the job submission went well
         if job_response["status"] == "ERROR":
@@ -214,8 +211,8 @@ class FresnelQPU(QPUHandler):
         except ValueError as e:
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
-                message="Failed at deserializing Job.Schedule._other",
-            ) from e
+                message=f"Failed at deserializing Job.Schedule._other. Got {repr(e)}",
+            )
         seq = other_dict["seq"]
         # Validate that Sequence is compatible with FresnelDevice
         current_device = self.device
@@ -226,14 +223,34 @@ class FresnelQPU(QPUHandler):
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
                 message="The Sequence in job.schedule._other['abstr_seq'] is not "
-                "compatible with the properties of the QPU (see FresnelQPU.device).",
-            ) from e
-        if seq.register.layout is None:
+                f"compatible with the specs of the QPU: {self.device.specs}. Got "
+                f"error {repr(e)}",
+            )
+        if self.device.requires_layout and seq.register.layout is None:
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
                 message=(
                     "The Register of the Sequence in job.schedule._other['abstr_seq']"
                     " must be defined from a layout."
+                ),
+            )
+        if (
+            not self.device.accepts_new_layouts
+            and not self.device.register_is_from_calibrated_layout(seq.register)
+        ):
+            raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
+                message=(
+                    "The Register of the Sequence in job.schedule._other['abstr_seq']"
+                    " must be defined from one of the calibrated layouts."
+                ),
+            )
+        if seq._empty_sequence:
+            raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
+                message=(
+                    "The Sequence should contain at least one Pulse, added to a "
+                    "declared channel."
                 ),
             )
         modulation = other_dict.get("modulation", False)
@@ -248,13 +265,14 @@ class FresnelQPU(QPUHandler):
             pulser_results = simulate_seq(seq, modulation, payload["nb_run"])
             myqlm_result = IsingAQPU.convert_samples_to_result(pulser_results)
             return myqlm_result
-        response = requests.post(self.base_uri + "/jobs", json=payload)
-        if response.status_code != 200:
+        try:
+            response = post_data_at_url(self.base_uri + "/jobs", payload)
+        except requests.exceptions.RequestException as e:
             raise QPUException(
-                ErrorType.ABORT, message="Could not create job: " + response.text
+                ErrorType.ABORT, message=f"Could not create job: Got {repr(e)}"
             )
         job_response = response.json()["data"]
-        logger.info(
+        LOGGER.info(
             f"Job #{job_response['uid']} created, status: {job_response['status']}"
         )
 
