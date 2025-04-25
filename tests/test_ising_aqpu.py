@@ -526,7 +526,7 @@ def test_run_sequence_ising(schedule_seq, circuit_job):
     job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
     assert not job_from_seq.nbshots
     result_schedule = aqpu.submit(job_from_seq)
-    exp_result_schedule = [(Sample(probability=1., state=0), "|000>")]
+    exp_result_schedule = [(Sample(probability=1.0, state=0), "|000>")]
     compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
     assert IsingAQPU.convert_result_to_samples(result_schedule) == {"000": 2000}
 
