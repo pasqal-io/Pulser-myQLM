@@ -136,6 +136,10 @@ def mocked_requests_raises_connection_error(*args, **kwargs):
     raise requests.ConnectionError
 
 
+def mocked_requests_raises_timeout_error(*args, **kwargs):
+    raise requests.exceptions.Timeout
+
+
 def mocked_requests_post_success(*args, **kwargs):
     """Mocks a response to the post of a job accepted by the system."""
     job_url = "http://fresneldevice/api/latest/jobs"
@@ -288,6 +292,7 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
         mocked_requests_get_400_exception,
         mocked_requests_get_500_exception,
         mocked_requests_raises_connection_error,
+        mocked_requests_raises_timeout_error,
         mocked_requests_get_success,
     )
     fresnel_qpu = FresnelQPU(base_uri=base_uri)
@@ -302,6 +307,7 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
             mocked_requests_get_400_exception,
             mocked_requests_get_500_exception,
             mocked_requests_raises_connection_error,
+            mocked_requests_raises_timeout_error,
             mocked_requests_get_success,
         )
         server_thread.start()
@@ -319,6 +325,7 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
         mocked_requests_get_400_exception,
         mocked_requests_get_500_exception,
         mocked_requests_raises_connection_error,
+        mocked_requests_raises_timeout_error,
         mocked_requests_get_success,
     )
     specs = qpu.get_specs()
@@ -696,29 +703,41 @@ def test_device_fetching_job_polling_errors(
     starting_successes = successes + [mocked_requests_get_success]
     if remote_fresnel:
         starting_successes.append(mocked_requests_get_success)
-    # If QPU returns 400 error
-    # Can't connect to it
-    mock_get.side_effect = mocked_requests_get_400_exception
-    with pytest.raises(
-        QPUException, match="Connection with API failed, make sure the address"
-    ):
-        FresnelQPU(base_uri=base_uri)
-    # Can't fetch specs
-    mock_get.side_effect = mocked_requests_get_400_exception
-    with pytest.raises(
-        QPUException, match="An error occured fetching the Device implemented"
-    ):
-        qpu.get_specs()
-    # Can't get a response from post
-    response = requests.post(post_address, json=post_json)
-    job_response = response.json()["data"]
-    with pytest.raises(QPUException, match="An error occured fetching your results:"):
-        fresnel_qpu.poll_job_results(job_response)
+    # If QPU returns 400 error or a non-HTTP non-Connection Error
+    for mocked_requests_get in [
+        mocked_requests_get_400_exception,
+        mocked_requests_raises_timeout_error,
+    ]:
+        # Can't connect to it
+        mock_get.side_effect = mocked_requests_get
+        with pytest.raises(
+            QPUException, match="Connection with API failed, make sure the address"
+        ):
+            FresnelQPU(base_uri=base_uri)
+        # Can't fetch specs
+        mock_get.side_effect = mocked_requests_get
+        with pytest.raises(
+            QPUException, match="An error occured fetching the Device implemented"
+        ):
+            qpu.get_specs()
+        # Can't get a response from post
+        response = requests.post(post_address, json=post_json)
+        job_response = response.json()["data"]
+        with pytest.raises(
+            QPUException, match="An error occured fetching your results:"
+        ):
+            fresnel_qpu.poll_job_results(job_response)
 
-    qpu_behaviour = starting_successes + [mocked_requests_get_400_exception]
-    mock_get.side_effect = SideEffect(*qpu_behaviour)
-    with pytest.raises(QPUException, match="An error occured fetching your results:"):
-        qpu.submit(job_from_seq)
+        qpu_behaviour = (
+            starting_successes + [mocked_requests_get]
+            if mocked_requests_get == mocked_requests_get_400_exception
+            else successes + [mocked_requests_get]
+        )
+        mock_get.side_effect = SideEffect(*qpu_behaviour)
+        with pytest.raises(
+            QPUException, match="An error occured fetching your results:"
+        ):
+            qpu.submit(job_from_seq)
 
     # if QPU keeps returning 500 error/Connection error
     # Can't get a response from post/specs fetching keeps failing
