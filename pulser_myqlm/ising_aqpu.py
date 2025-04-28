@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import warnings
 from collections import Counter
 from functools import cached_property
 from typing import Union, cast
