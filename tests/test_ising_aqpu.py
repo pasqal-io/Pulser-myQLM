@@ -540,7 +540,6 @@ def test_run_sequence_ising(schedule_seq, circuit_job):
         (Sample(probability=0.9995, state=0), "|000>"),
         (Sample(probability=0.0005, state=2), "|010>"),
     ]
-    print(result_empty_sch.raw_data)
     compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
     assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
         "000": 1999,

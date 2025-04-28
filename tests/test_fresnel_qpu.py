@@ -222,7 +222,6 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
         (Sample(probability=0.999, state=0), "|000>"),
         (Sample(probability=0.001, state=1), "|001>"),
     ]
-    print(result.raw_data)
     compare_results_raw_data(result.raw_data, exp_result)
     assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "001": 1}
     # Run job created from a sequence using convert_sequence_to_schedule
@@ -347,7 +346,6 @@ def test_job_simulation(
             (Sample(probability=0.9995, state=0), "|000>"),
             (Sample(probability=0.0005, state=1), "|001>"),
         ]
-    print(result.raw_data)
     compare_results_raw_data(result.raw_data, exp_result)
 
 
@@ -489,7 +487,6 @@ def test_non_operational_qpu(
             (Sample(probability=0.9995, state=0), "|000>"),
             (Sample(probability=0.0005, state=1), "|001>"),
         ]
-    print(result.raw_data)
     compare_results_raw_data(result.raw_data, exp_result)
 
 
