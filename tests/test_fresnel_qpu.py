@@ -21,6 +21,7 @@ from qat.core import Job, Sample, Schedule
 
 from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
 from pulser_myqlm.ising_aqpu import IsingAQPU
+from pulser_myqlm.helpers.requests import JobInfo
 from tests.helpers.compare_raw_data import compare_results_raw_data
 from tests.helpers.deploy_qpu import deploy_qpu, get_remote_qpu
 
@@ -629,7 +630,7 @@ def test_job_polling_success(_, mock_get, remote_fresnel, schedule_seq):
     response = requests.post(
         fresnel_qpu.base_uri + "/jobs", json={"nb_run": 1, "pulser_sequence": "seq"}
     )
-    job_response = response.json()["data"]
+    job_response = JobInfo(response.json()["data"])
     polling_behaviour = [
         mocked_requests_get_running,
         mocked_requests_get_500_exception,
@@ -638,8 +639,7 @@ def test_job_polling_success(_, mock_get, remote_fresnel, schedule_seq):
     ]
     mock_get.side_effect = SideEffect(*polling_behaviour)
     result = fresnel_qpu.poll_job_results(job_response)
-    assert result["status"] == "DONE"
-    assert result["result"]
+    assert result.get_status() == "DONE"
     # Test job polling on full QPU
     mock_get.side_effect = mocked_requests_get_success
     if remote_fresnel:
@@ -692,7 +692,7 @@ def test_device_fetching_job_polling_errors(
         with pytest.raises(
             QPUException, match="Results are only available if base_uri is defined"
         ):
-            fresnel_qpu.poll_job_results({})
+            fresnel_qpu.poll_job_results(JobInfo({}))
         return
 
     post_address = fresnel_qpu.base_uri + "/jobs"
@@ -722,7 +722,7 @@ def test_device_fetching_job_polling_errors(
             qpu.get_specs()
         # Can't get a response from post
         response = requests.post(post_address, json=post_json)
-        job_response = response.json()["data"]
+        job_response = JobInfo(response.json()["data"])
         with pytest.raises(
             QPUException, match="An error occured fetching your results:"
         ):
@@ -751,7 +751,7 @@ def test_device_fetching_job_polling_errors(
         ):
             qpu.get_specs()
         response = requests.post(post_address, json=post_json)
-        job_response = response.json()["data"]
+        job_response = JobInfo(response.json()["data"])
         mock_get.side_effect = SideEffect(
             *[mocked_requests_get, mocked_requests_get_success]
         )
@@ -761,6 +761,7 @@ def test_device_fetching_job_polling_errors(
     # Can't get a response if the Job terminates with an error
     mock_get.side_effect = mocked_requests_get_error
     response = requests.post(post_address, json=post_json)
+    job_response = JobInfo(response.json()["data"])
     with pytest.raises(
         QPUException,
         match=(
