@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import backoff
 import copy
+import logging
 import typing
 
 import pulser
 import qat
 from pulser.backend.remote import BatchStatus, JobStatus
 from pulser.exceptions.serialization import DeserializeDeviceError
-from qat.comm.qlmaas.ttypes import QLMServiceException
 
-from pulser_myqlm.constants import MAX_CONNECTION_ATTEMPTS
 from pulser_myqlm.helpers.deserialize_other import deserialize_other
+from pulser_myqlm.helpers.qlm_connection import QLMServer
 from pulser_myqlm.ising_aqpu import IsingAQPU
+
+LOGGER = logging.getLogger(__name__)
 
 JOB_STATUS_QLM_TO_PULSER_BATCH: dict[qat.comm.qlmaas.ttypes.JobStatus, BatchStatus] = {
     qat.comm.qlmaas.ttypes.JobStatus.WAITING: BatchStatus.PENDING,
@@ -40,9 +41,6 @@ JOB_STATUS_QLM_TO_PULSER_JOB: dict[qat.comm.qlmaas.ttypes.JobStatus, JobStatus] 
     qat.comm.qlmaas.ttypes.JobStatus.FAILED: JobStatus.ERROR,
 }
 
-backoff_decorator = backoff.on_exception(
-    backoff.fibo, Exception, max_tries=MAX_CONNECTION_ATTEMPTS, max_value=60
-)
 
 class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
     """A connection to a QLM, to submit Sequences to QPUs.
@@ -56,15 +54,19 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         - Retrieve the Results of the execution as pulser Results.
 
     Arguments:
-        hostname: Hostname of the server
-        port: port listened by the server Default: 443
-        authentication: Authentication method. The authentication is either "password" to login using a pair username/password or "ssl" to login using a SSL certificate Default: False
-        certificate: path to SSL certificate
-        key: path to SSL key
-        check_host: checks the certificate of the server Default: True
-        proxy_host: hostname of the HTTPS proxy (if you want to use an HTTPS proxy - using an HTTPS proxy is not compatible with SSL authentication)
-        proxy_port: port of the HTTPS proxy (if you want to use an HTTPS proxy - using an HTTPS proxy is not compatible with SSL authentication)
-        timeout: keep alive connection timeout
+        hostname: Hostname of the server.
+        port: port listened by the server.
+        authentication: Authentication method. The authentication is either
+            "password" to login using a pair username/password or "ssl" to
+            login using a SSL certificate.
+        certificate: path to SSL certificate.
+        key: path to SSL key.
+        check_host: checks the certificate of the server.
+        proxy_host: hostname of the HTTPS proxy (if you want to use an HTTPS proxy -
+            using an HTTPS proxy is not compatible with SSL authentication)
+        proxy_port: port of the HTTPS proxy (if you want to use an HTTPS proxy -
+            using an HTTPS proxy is not compatible with SSL authentication)
+        timeout: keep alive connection timeout.
 
     Keyword Arguments:
         All the other parameters to initialize a qat.qlmaas.QLMaaSConnection.
@@ -74,29 +76,30 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             arguments.
     """
 
-    def __init__(self,
-        hostname: str = None,
-        port: int = None,
-        authentication: str = None,
-        certificate: str = None,
-        key: str = None,
-        check_host: bool = None,
-        proxy_host: str = None,
-        proxy_port: int = None,
-        timeout: int = None,
-        **kwargs: dict[str, typing.Any]
+    def __init__(
+        self,
+        hostname: str | None = None,
+        port: int | None = None,
+        authentication: str | None = None,
+        certificate: str | None = None,
+        key: str | None = None,
+        check_host: bool | None = None,
+        proxy_host: str | None = None,
+        proxy_port: int | None = None,
+        timeout: int | None = None,
+        **kwargs: dict[str, typing.Any],
     ) -> None:
         self._connection = qat.qlmaas.QLMaaSConnection(
-            hostname, 
-            port, 
-            authentication, 
-            certificate, 
-            key, 
-            check_host, 
-            proxy_host, 
-            proxy_port, 
-            timeout, 
-            **kwargs
+            hostname,
+            port,
+            authentication,
+            certificate,
+            key,
+            check_host,
+            proxy_host,
+            proxy_port,
+            timeout,
+            **kwargs,
         )
 
     def supports_open_batch(self) -> bool:
@@ -106,8 +109,8 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
     @staticmethod
     def _get_job_ids_from_batch(batch: qat.core.Batch) -> list[str]:
         """Generate the job IDs for a qat.core.Batch.
-        
-        Inside a Batch containing jobs Job_1, Job_2, .... Job_n, the job IDS 
+
+        Inside a Batch containing jobs Job_1, Job_2, .... Job_n, the job IDS
         are "1", "2", ..., "{n}".
         """
         return [f"{i}" for (i, _) in enumerate(batch.jobs)]
@@ -127,7 +130,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
     ) -> JobStatus:
         try:
             return JOB_STATUS_QLM_TO_PULSER_JOB[job_status]
-        except IndexError as e:
+        except KeyError as e:
             raise ValueError(f"Unknown Job status {job_status}.") from e
 
     def submit(
@@ -172,8 +175,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                 "its switch_device method."
             )
         # Instantiate the targeted QPU
-        get_connected_qpu = backoff_decorator(self._connection.get_qpu)
-        connected_qpu = get_connected_qpu(qpu_id)()
+        connected_qpu = QLMServer.get_qpu(self._connection, qpu_id)
         # Create a batch of Jobs
         jobs = []
         # Each set of parameters create a different myQLM Job
@@ -182,7 +184,9 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             if sequence.is_parametrized() or sequence.is_register_mappable():
                 vars = params.get("variables", {})
                 seq_to_submit = sequence.build(**vars)
-            assert not (seq_to_submit.is_parametrized() or seq_to_submit.is_register_mappable())
+            assert not (
+                seq_to_submit.is_parametrized() or seq_to_submit.is_register_mappable()
+            )
             jobs.append(
                 IsingAQPU.convert_sequence_to_job(
                     seq_to_submit,
@@ -192,35 +196,42 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             )
         batch = qat.core.Batch(jobs)  # Create a myQLM Batch
         async_res = connected_qpu.submit(batch)  # Submit it to the QPU
-        res_info = backoff_decorator(async_res.get_info)()  # Get the info on the Batch
         if wait:
-            backoff_decorator(async_res.join)()  # Returns the result of the job when it's done
+            # Returns the result of the job when it's done
+            async_res.join()
         return pulser.backend.remote.RemoteResults(
-            res_info.id, self, PulserQLMConnection._get_job_ids_from_batch(batch)
+            async_res.get_id(), self, PulserQLMConnection._get_job_ids_from_batch(batch)
         )
 
     def fetch_available_devices(self) -> dict[str, pulser.devices.Device]:
         """Fetches the devices available through this connection."""
         # Get all the myQLM QPUs available through the QLMaaSConnection
-        qpus = backoff_decorator(self._connection.get_qpus)()
+        qpus_names = QLMServer.get_qpus(self._connection)  # list of names of qpus
         devices = {}
-        for qpu in qpus:
-            qpu_name = qpu.name
+        for qpu_name in qpus_names:
             # Instantiate the QPU
             # A myQLM QPU associated with a Pasqal QPU doesn't take any args
             try:
-                real_qpu = backoff_decorator(self._connection.get_qpu)(qpu_name)()
+                qpu_server = QLMServer.get_qpu(self._connection, qpu_name)
             except (RuntimeError, TypeError):
+                LOGGER.debug(
+                    f"QLMaaSQPU {qpu_name} does not contain a Device (can't be "
+                    "initialized without providing arguments)."
+                )
                 # Go to the next QPU if the instantiation failed
                 continue
             # A myQLM QPU associated with a Pasqal QPU has a serialized device
             # in the description of its specs
             try:
                 device = pulser.devices.Device.from_abstract_repr(
-                    backoff_decorator(real_qpu.get_specs)().description
+                    qpu_server.get_description()
                 )
-            except (TypeError, DeserializeDeviceError):
+            except (TypeError, DeserializeDeviceError) as e:
                 # Go to the next QPU if no device was found
+                LOGGER.debug(
+                    "Can't find a correct Device in description of specs of QLMaaSQPU "
+                    f"{qpu_name}. Got {repr(e)}."
+                )
                 continue
             devices[qpu_name] = device
         return devices
@@ -260,9 +271,10 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
 
         It returns a dictionary mapping the job ID to its status and results.
         """
-        # In QLMaaSConnection, the Jobs inside a Batch have the status of the Batch 
-        qlm_batch = self._get_batch(batch_id)
-        qlm_status = backoff_decorator(self._connection.get_job)(batch_id).get_status(human_readable=False)
+        # In QLMaaSConnection, the Jobs inside a Batch have the status of the Batch
+        async_res = QLMServer.get_job(self._connection, batch_id)
+        qlm_batch = async_res.get_batch()
+        qlm_status = async_res.get_status()
         # Link the status of the batch to a pulser JobStatus
         status = PulserQLMConnection._convert_qlm_status_to_pulser_job(qlm_status)
         job_ids = PulserQLMConnection._get_job_ids_from_batch(qlm_batch)
@@ -271,7 +283,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             return {job_id: (status, None) for job_id in job_ids}
         results: dict[str, tuple[JobStatus, pulser.result.Result | None]] = {}
         # If the Batch is DONE, fetch the myqlm Result associated to each of its Jobs
-        for i, result in enumerate(backoff_decorator(self._connection.get_job)(batch_id).get_result().results):
+        for i, result in enumerate(async_res.get_result().results):
             # and make a pulser SampledResult, that needs the qubit ids and meas basis
             # that are in the submitted Sequence, that is in Job.schedule._other
             job = qlm_batch[i]  # fetch the myQLM Job
@@ -302,25 +314,18 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
 
     def _get_batch_status(self, batch_id: str) -> BatchStatus:
         """Gets the status of a batch from its ID."""
-        qlm_status = backoff_decorator(self._connection.get_job)(batch_id).get_status(human_readable=False)
+        qlm_status = QLMServer.get_job(self._connection, batch_id).get_status()
         return PulserQLMConnection._convert_qlm_status_to_pulser_batch(qlm_status)
-
-    @backoff_decorator
-    def _get_batch(self, batch_id: str) -> qat.core.Batch:
-        """Returns the myQLM Batch associated with a batch id."""
-        return self._connection.get_job(batch_id).get_batch()
 
     def _get_job_ids(self, batch_id: str) -> list[str]:
         """Gets all the job IDs within a batch."""
-        qlm_batch = self._get_batch(batch_id)
+        qlm_batch = QLMServer.get_job(self._connection, batch_id).get_batch()
         return PulserQLMConnection._get_job_ids_from_batch(qlm_batch)
 
-    @backoff_decorator
     def cancel_batch(self, batch_id: str) -> None:
         """Cancels a batch using its ID."""
-        self._connection.get_job(batch_id).cancel()
+        QLMServer.get_job(self._connection, batch_id).cancel()
 
-    @backoff_decorator
     def delete_batch(self, batch_id: str) -> None:
         """Deletes the files of a batch using its ID."""
-        self._connection.get_job(batch_id).delete_files()
+        QLMServer.get_job(self._connection, batch_id).delete_files()
