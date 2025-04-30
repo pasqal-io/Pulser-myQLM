@@ -86,9 +86,14 @@ class QLMServer:
 
     @staticmethod
     @backoff_decorator_qlm
+    def get_qpu_class(connection: QLMaaSConnection, qpu_id: str) -> QLMaaSQPU:
+        """Returns a QLMaaSQPU associated with the qpu_id in a QLMaaSConnection."""
+        return connection.get_qpu(qpu_id)
+
+    @staticmethod
     def get_qpu(connection: QLMaaSConnection, qpu_id: str) -> QLMQPUServer:
         """Returns a QLMaaSQPU associated with the qpu_id in a QLMaaSConnection."""
-        return QLMQPUServer(connection.get_qpu(qpu_id)())
+        return QLMQPUServer(QLMServer.get_qpu_class(connection, qpu_id)())
 
     @staticmethod
     @backoff_decorator_qlm
