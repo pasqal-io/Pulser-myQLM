@@ -11,7 +11,7 @@ import pytest
 from pulser.backend.remote import JobParams
 from qat.comm.exceptions.ttypes import QPUException
 from qat.comm.qlmaas.ttypes import JobInfo, JobStatus
-from qat.core import Batch, BatchResult, Result
+from qat.core import Batch, BatchResult
 from qat.qlmaas import QLMaaSConnection
 from qat.qlmaas.result import AsyncResult
 from qat.qlmaas.wrappers import ServiceDescription
