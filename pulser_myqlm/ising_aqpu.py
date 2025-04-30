@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import warnings
 from collections import Counter
 from functools import cached_property
 from typing import Union, cast
@@ -221,19 +220,24 @@ class IsingAQPU(QPUHandler):
             schedule: A MyQLM Schedule representing a time-dependent Ising hamiltonian.
         """
         qpu = cls.from_sequence(seq)
+        _other = json.dumps(
+            {"abstr_seq": seq.to_abstract_repr(), "modulation": modulation}
+        ).encode("utf-8")
         # Check that the sequence has only one global channel declared
         declared_channel = list(seq.declared_channels.values())
         if len(declared_channel) > 1:
             raise ValueError("More than one channel declared.")
-        elif len(declared_channel) == 1:
-            ch_obj = declared_channel[0]
-            if not isinstance(ch_obj, Rydberg):
-                raise TypeError("Declared channel is not Rydberg.")
-            elif ch_obj.addressing != "Global":
-                raise TypeError("Declared channel is not Rydberg.Global.")
-        else:
-            # empty schedule if empty sequence
-            return Schedule()
+        elif len(declared_channel) == 0:
+            # Schedule with interaction terms if empty sequence
+            sch = Schedule([(1, qpu.interaction_observables)], tmax=0)
+            sch._other = _other
+            return sch
+        # one single channel declared
+        ch_obj = declared_channel[0]
+        if not isinstance(ch_obj, Rydberg):
+            raise TypeError("Declared channel is not Rydberg.")
+        elif ch_obj.addressing != "Global":
+            raise TypeError("Declared channel is not Rydberg.Global.")
 
         ch_name = list(seq.declared_channels.keys())[0]
         # Sample the sequence
@@ -251,11 +255,7 @@ class IsingAQPU(QPUHandler):
             ],
             tmax=ch_sample.duration / 1000,  # in µs
         )
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Register serialization", UserWarning)
-            sch._other = json.dumps(
-                {"abstr_seq": seq.to_abstract_repr(), "modulation": modulation}
-            ).encode("utf-8")
+        sch._other = _other
         return sch
 
     @classmethod

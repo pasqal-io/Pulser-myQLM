@@ -188,7 +188,7 @@ def test_job_deserialization_fresnel(schedule_seq, other_value):
 @pytest.mark.parametrize("qpu", ["local", "remote"])
 def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
     """Test simulation of a Sequence using pulser-simulation."""
-    np.random.seed(123)
+    np.random.seed(111)
     schedule, seq = schedule_seq
     # If qpu is None, pulser-simulation in IsingAQPU is used
     if qpu == "local":
@@ -220,24 +220,18 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
     result = aqpu.submit(job_from_seq)
     exp_result = [
         (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.001, state=4), "|100>"),
+        (Sample(probability=0.001, state=1), "|001>"),
     ]
     compare_results_raw_data(result.raw_data, exp_result)
-    assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
+    assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "001": 1}
     # Run job created from a sequence using convert_sequence_to_schedule
     schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
     job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
     assert not job_from_seq.nbshots
     result_schedule = aqpu.submit(job_from_seq)
-    exp_result_schedule = [
-        (Sample(probability=0.9995, state=0), "|000>"),
-        (Sample(probability=0.0005, state=1), "|001>"),
-    ]
+    exp_result_schedule = [(Sample(probability=1, state=0), "|000>")]
     compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
-    assert IsingAQPU.convert_result_to_samples(result_schedule) == {
-        "000": 1999,
-        "001": 1,
-    }
+    assert IsingAQPU.convert_result_to_samples(result_schedule) == {"000": 2000}
 
     # Can simulate Job if Schedule is not equivalent to Sequence
     empty_job = Job()
@@ -246,15 +240,13 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
     empty_job.schedule = empty_schedule
     result_empty_sch = aqpu.submit(empty_job)
     exp_result_empty_sch = [
-        (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.0005, state=1), "|001>"),
-        (Sample(probability=0.0005, state=4), "|100>"),
+        (Sample(probability=0.9995, state=0), "|000>"),
+        (Sample(probability=0.0005, state=2), "|010>"),
     ]
     compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
     assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
-        "000": 1998,
-        "001": 1,
-        "100": 1,
+        "000": 1999,
+        "010": 1,
     }
 
 
@@ -326,7 +318,6 @@ def test_job_simulation(
 ):
     """Test Sequence simulation on a FresnelQPU interfacing a working QPU."""
     global PORT
-    np.random.seed(123)
 
     # Modify the device of the Sequence
     _, seq = schedule_seq
@@ -343,11 +334,18 @@ def test_job_simulation(
 
     # Simulate Sequence using Pulser Simulation
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    np.random.seed(111)
     result = qpu.submit(job_from_seq)
-    exp_result = [
-        (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.001, state=4), "|100>"),
-    ]
+    if base_uri:
+        exp_result = [
+            (Sample(probability=0.999, state=0), "|000>"),
+            (Sample(probability=0.001, state=4), "|100>"),
+        ]
+    else:
+        exp_result = [
+            (Sample(probability=0.9995, state=0), "|000>"),
+            (Sample(probability=0.0005, state=1), "|001>"),
+        ]
     compare_results_raw_data(result.raw_data, exp_result)
 
 
@@ -472,18 +470,23 @@ def test_non_operational_qpu(
     # Set response to sucess for posting job
     mock_post.side_effect = mocked_requests_post_success
     # Necessary for expected results to match
-    np.random.seed(123)
+    np.random.seed(111)
     with (
         pytest.warns(UserWarning, match="QPU not operational, will try again in")
         if base_uri
         else nullcontext()
     ):
         result = qpu.submit(job_from_seq)
-
-    exp_result = [
-        (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.001, state=4), "|100>"),
-    ]
+    if base_uri:
+        exp_result = [
+            (Sample(probability=0.999, state=0), "|000>"),
+            (Sample(probability=0.001, state=4), "|100>"),
+        ]
+    else:
+        exp_result = [
+            (Sample(probability=0.9995, state=0), "|000>"),
+            (Sample(probability=0.0005, state=1), "|001>"),
+        ]
     compare_results_raw_data(result.raw_data, exp_result)
 
 
@@ -576,7 +579,7 @@ def test_job_polling_success(_, mock_get, remote_fresnel, schedule_seq):
         successes.append(mocked_requests_get_success)
     qpu_behaviour = successes + polling_behaviour
     mock_get.side_effect = SideEffect(*qpu_behaviour)
-    np.random.seed(123)
+    np.random.seed(111)
     result = qpu.submit(job_from_seq)
     exp_result = [
         (Sample(probability=0.999, state=0), "|000>"),

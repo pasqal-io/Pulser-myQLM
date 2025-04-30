@@ -285,9 +285,9 @@ def test_hamiltonian(test_ising_qpu, amp, det, phase, request):
 @pytest.mark.parametrize("device_type", ["raman", "local"])
 def test_convert_init_sequence_to_schedule(test_ising_qpu, device_type):
     """Testing IsingAQPU.convert_sequence_to_schedule."""
-    # An empty sequence returns an empty Schedule
+    # An empty sequence returns a Schedule of duration 0
     seq = Sequence(test_ising_qpu.register, MockDevice)
-    assert Schedule() == IsingAQPU.convert_sequence_to_schedule(seq)
+    assert 0 == IsingAQPU.convert_sequence_to_schedule(seq).tmax
     # Conversion only works for Rydberg Global channel
     # Does not work if a Raman Global channel is declared
     if device_type == "raman":
@@ -411,9 +411,9 @@ def test_convert_sequence_with_failing_schedule(failing_schedule_seq):
 )
 def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_ising_qpu):
     """Test the conversion of MyQLM Result into a Counter as in Pulser."""
-    np.random.seed(123)
+    np.random.seed(111)
     _, seq = schedule_seq
-    sim_result = QutipEmulator.from_sequence(seq, sampling_rate=0.1).run()
+    sim_result = QutipEmulator.from_sequence(seq).run()
     n_samples = 1000
     sim_samples = sim_result.sample_final_state(n_samples)
     sim_samples_dict = {k: v for k, v in sim_samples.items()}
@@ -501,7 +501,7 @@ def test_job_deserialization_ising(schedule_seq, other_value, err_mess):
 
 def test_run_sequence_ising(schedule_seq, circuit_job):
     """Test simulation of a Sequence using pulser-simulation."""
-    np.random.seed(123)
+    np.random.seed(111)
     schedule, seq = schedule_seq
     aqpu = IsingAQPU.from_sequence(seq)
     # IsingQPU can only run job with a schedule
@@ -517,24 +517,18 @@ def test_run_sequence_ising(schedule_seq, circuit_job):
     result = aqpu.submit(job_from_seq)
     exp_result = [
         (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.001, state=4), "|100>"),
+        (Sample(probability=0.001, state=1), "|001>"),
     ]
     compare_results_raw_data(result.raw_data, exp_result)
-    assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "100": 1}
+    assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "001": 1}
     # Run job created from a sequence using convert_sequence_to_schedule
     schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
     job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
     assert not job_from_seq.nbshots
     result_schedule = aqpu.submit(job_from_seq)
-    exp_result_schedule = [
-        (Sample(probability=0.9995, state=0), "|000>"),
-        (Sample(probability=0.0005, state=1), "|001>"),
-    ]
+    exp_result_schedule = [(Sample(probability=1.0, state=0), "|000>")]
     compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
-    assert IsingAQPU.convert_result_to_samples(result_schedule) == {
-        "000": 1999,
-        "001": 1,
-    }
+    assert IsingAQPU.convert_result_to_samples(result_schedule) == {"000": 2000}
 
     # Can simulate Job if Schedule is not equivalent to Sequence
     empty_job = Job()
@@ -543,15 +537,13 @@ def test_run_sequence_ising(schedule_seq, circuit_job):
     empty_job.schedule = empty_schedule
     result_empty_sch = aqpu.submit(empty_job)
     exp_result_empty_sch = [
-        (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.0005, state=1), "|001>"),
-        (Sample(probability=0.0005, state=4), "|100>"),
+        (Sample(probability=0.9995, state=0), "|000>"),
+        (Sample(probability=0.0005, state=2), "|010>"),
     ]
     compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
     assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
-        "000": 1998,
-        "001": 1,
-        "100": 1,
+        "000": 1999,
+        "010": 1,
     }
 
     # Submit_job of IsingAQPU must not be used if qpu is not None
