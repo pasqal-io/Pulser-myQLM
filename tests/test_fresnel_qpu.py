@@ -20,8 +20,8 @@ from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Job, Sample, Schedule
 
 from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
-from pulser_myqlm.ising_aqpu import IsingAQPU
 from pulser_myqlm.helpers.requests import JobInfo
+from pulser_myqlm.ising_aqpu import IsingAQPU
 from tests.helpers.compare_raw_data import compare_results_raw_data
 from tests.helpers.deploy_qpu import deploy_qpu, get_remote_qpu
 
