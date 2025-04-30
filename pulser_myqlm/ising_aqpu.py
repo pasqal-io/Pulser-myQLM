@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import warnings
 from collections import Counter
 from functools import cached_property
 from typing import Union, cast
@@ -221,11 +220,9 @@ class IsingAQPU(QPUHandler):
             schedule: A MyQLM Schedule representing a time-dependent Ising hamiltonian.
         """
         qpu = cls.from_sequence(seq)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Register serialization", UserWarning)
-            _other = json.dumps(
-                {"abstr_seq": seq.to_abstract_repr(), "modulation": modulation}
-            ).encode("utf-8")
+        _other = json.dumps(
+            {"abstr_seq": seq.to_abstract_repr(), "modulation": modulation}
+        ).encode("utf-8")
         # Check that the sequence has only one global channel declared
         declared_channel = list(seq.declared_channels.values())
         if len(declared_channel) > 1:
