@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import logging
 import typing
 
@@ -160,7 +159,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         # Submit one myQLM Job per job params
         results = []
         for params in job_params:
-            seq_to_submit = copy.deepcopy(sequence)
+            seq_to_submit = sequence
             if sequence.is_parametrized() or sequence.is_register_mappable():
                 vars = params.get("variables", {})
                 seq_to_submit = sequence.build(**vars)
