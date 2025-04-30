@@ -47,7 +47,7 @@ class MockAsyncResult(AsyncResult):
         else:
             raise Exception  # I don't know the exception
 
-    def get_status(self, human_readable: bool = True) -> JobStatus | str:
+    def get_status(self, human_readable: bool = True) -> typing.Union[JobStatus, str]:
         status = self.connection.batchs[self.job_id][2]
         if not human_readable:
             return status
@@ -89,15 +89,15 @@ class MockQLMaaSConnection(QLMaaSConnection):
 
     def __init__(
         self,
-        hostname: str = None,
-        port: int = None,
-        authentication: str = None,
-        certificate: str = None,
-        key: str = None,
-        check_host: bool = None,
-        proxy_host: str = None,
-        proxy_port: int = None,
-        timeout: int = None,
+        hostname: str | None = None,
+        port: int | None = None,
+        authentication: str | None = None,
+        certificate: str | None = None,
+        key: str | None = None,
+        check_host: bool | None = None,
+        proxy_host: str | None = None,
+        proxy_port: int | None = None,
+        timeout: int | None = None,
         **kwargs: dict[str, typing.Any],
     ):
         self.hostname = hostname
