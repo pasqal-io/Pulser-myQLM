@@ -5,7 +5,7 @@ from typing import cast
 
 import backoff
 from qat.comm.qlmaas.ttypes import JobStatus
-from qat.core import Batch, BatchResult
+from qat.core import Job, Result
 from qat.qlmaas import QLMaaSConnection
 from qat.qlmaas.qpus import QLMaaSQPU
 from qat.qlmaas.result import AsyncResult
@@ -35,7 +35,7 @@ class AsyncResultServer:
         return cast(str, self.result.get_info().id)
 
     @backoff_decorator_qlm
-    def join(self) -> BatchResult:
+    def join(self) -> Result:
         """Wait until the job is done and returns the result of the job."""
         return self.result.join()
 
@@ -45,11 +45,11 @@ class AsyncResultServer:
         return self.result.get_status(human_readable=False)
 
     @backoff_decorator_qlm
-    def get_batch(self) -> Batch:
+    def get_batch(self) -> Job:
         """Get the job's batch."""
         return self.result.get_batch()
 
-    def get_result(self) -> BatchResult:
+    def get_result(self) -> Result:
         """Get the job's result. If the job is not available, an exception is raised."""
         return self.result.get_result()
 
@@ -71,7 +71,7 @@ class QLMQPUServer:
         self.qpu: QLMaaSQPU = qpu
 
     @backoff_decorator_qlm
-    def submit(self, batch: Batch) -> AsyncResultServer:
+    def submit(self, batch: Job) -> AsyncResultServer:
         """Submits a batch to the QPU. Creates an AsyncResultServer."""
         return AsyncResultServer(self.qpu.submit(batch))
 

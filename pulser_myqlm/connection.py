@@ -17,17 +17,6 @@ from pulser_myqlm.ising_aqpu import IsingAQPU
 
 LOGGER = logging.getLogger(__name__)
 
-JOB_STATUS_QLM_TO_PULSER_BATCH: dict[qat.comm.qlmaas.ttypes.JobStatus, BatchStatus] = {
-    qat.comm.qlmaas.ttypes.JobStatus.WAITING: BatchStatus.PENDING,
-    qat.comm.qlmaas.ttypes.JobStatus.RUNNING: BatchStatus.RUNNING,
-    qat.comm.qlmaas.ttypes.JobStatus.DONE: BatchStatus.DONE,
-    qat.comm.qlmaas.ttypes.JobStatus.CANCELLED: BatchStatus.CANCELED,
-    qat.comm.qlmaas.ttypes.JobStatus.UNKNOWN_JOB: BatchStatus.ERROR,
-    qat.comm.qlmaas.ttypes.JobStatus.IN_BUCKET: BatchStatus.PENDING,
-    qat.comm.qlmaas.ttypes.JobStatus.DELETED: BatchStatus.ERROR,
-    qat.comm.qlmaas.ttypes.JobStatus.STOPPED: BatchStatus.CANCELED,
-    qat.comm.qlmaas.ttypes.JobStatus.FAILED: BatchStatus.ERROR,
-}
 
 JOB_STATUS_QLM_TO_PULSER_JOB: dict[qat.comm.qlmaas.ttypes.JobStatus, JobStatus] = {
     qat.comm.qlmaas.ttypes.JobStatus.WAITING: JobStatus.PENDING,
@@ -107,22 +96,14 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         return False
 
     @staticmethod
-    def _get_job_ids_from_batch(batch: qat.core.Batch) -> list[str]:
-        """Generate the job IDs for a qat.core.Batch.
-
-        Inside a Batch containing jobs Job_1, Job_2, .... Job_n, the job IDS
-        are "1", "2", ..., "{n}".
-        """
-        return [f"{i}" for (i, _) in enumerate(batch.jobs)]
+    def _batch_id_from_job_ids(job_ids: list[str]) -> str:
+        """Generate the Batch ID from a list of Job IDs."""
+        return "|".join(job_ids)
 
     @staticmethod
-    def _convert_qlm_status_to_pulser_batch(
-        job_status: qat.qlmaas.ttypes.JobStatus,
-    ) -> BatchStatus:
-        try:
-            return JOB_STATUS_QLM_TO_PULSER_BATCH[job_status]
-        except KeyError as e:
-            raise RuntimeError(f"Unknown Job status {job_status}.") from e
+    def _get_job_ids(batch_id: str) -> list[str]:
+        """Gets all the job IDs within a batch."""
+        return batch_id.split("|")
 
     @staticmethod
     def _convert_qlm_status_to_pulser_job(
@@ -176,9 +157,8 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             )
         # Instantiate the targeted QPU
         connected_qpu = QLMServer.get_qpu(self._connection, qpu_id)
-        # Create a batch of Jobs
-        jobs = []
-        # Each set of parameters create a different myQLM Job
+        # Submit one myQLM Job per job params
+        results = []
         for params in job_params:
             seq_to_submit = copy.deepcopy(sequence)
             if sequence.is_parametrized() or sequence.is_register_mappable():
@@ -187,20 +167,22 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             assert not (
                 seq_to_submit.is_parametrized() or seq_to_submit.is_register_mappable()
             )
-            jobs.append(
-                IsingAQPU.convert_sequence_to_job(
-                    seq_to_submit,
-                    nbshots=params.get("runs", 0),
-                    modulation=False,
+            results.append(
+                connected_qpu.submit(
+                    IsingAQPU.convert_sequence_to_job(
+                        seq_to_submit,
+                        nbshots=params.get("runs", 0),
+                        modulation=False,
+                    )
                 )
             )
-        batch = qat.core.Batch(jobs)  # Create a myQLM Batch
-        async_res = connected_qpu.submit(batch)  # Submit it to the QPU
         if wait:
-            # Returns the result of the job when it's done
-            async_res.join()
+            for res in results:
+                # Returns the result of the job when it's done
+                res.join()
+        job_ids = [res.get_id() for res in results]
         return pulser.backend.remote.RemoteResults(
-            async_res.get_id(), self, PulserQLMConnection._get_job_ids_from_batch(batch)
+            PulserQLMConnection._batch_id_from_job_ids(job_ids), self, job_ids
         )
 
     def fetch_available_devices(self) -> dict[str, pulser.devices.Device]:
@@ -239,22 +221,24 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
     def _fetch_result(
         self, batch_id: str, job_ids: list[str] | None
     ) -> tuple[pulser.backend.Results, ...]:
+        """Fetches the results of a completed batch."""
         # The results are always sampled results
-        jobs = self._query_job_progress(batch_id)
+        jobs_progression = self._query_job_progress(batch_id)
 
         if job_ids is None:
-            job_ids = list(jobs.keys())
+            job_ids = list(jobs_progression.keys())
 
         results: list[pulser.backend.Results] = []
         for id in job_ids:
-            if id not in jobs:
+            if id not in jobs_progression:
                 raise ValueError(
-                    f"Job id {id} is invalid, valid ids are {list(jobs.keys())}."
+                    f"Job id {id} is invalid for batch {batch_id}, "
+                    f"valid ids are {list(jobs_progression.keys())}."
                 )
-            status, result = jobs[id]
+            status, result = jobs_progression[id]
             if status != JobStatus.DONE:
                 raise pulser.backend.remote.RemoteResultsError(
-                    f"The results are not yet available, job {id} status is {status}."
+                    f"The results are not yet available, job {id} has status {status}."
                 )
             assert result is not None  # result is None if its status is not DONE
             results.append(result)
@@ -271,38 +255,40 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
 
         It returns a dictionary mapping the job ID to its status and results.
         """
-        # In QLMaaSConnection, the Jobs inside a Batch have the status of the Batch
-        async_res = QLMServer.get_job(self._connection, batch_id)
-        qlm_batch = async_res.get_batch()
-        qlm_status = async_res.get_status()
-        # Link the status of the batch to a pulser JobStatus
-        status = PulserQLMConnection._convert_qlm_status_to_pulser_job(qlm_status)
-        job_ids = PulserQLMConnection._get_job_ids_from_batch(qlm_batch)
-        if status != JobStatus.DONE:
-            # If the Batch is not done, then all results are None
-            return {job_id: (status, None) for job_id in job_ids}
-        results: dict[str, tuple[JobStatus, pulser.result.Result | None]] = {}
-        # If the Batch is DONE, fetch the myqlm Result associated to each of its Jobs
-        for i, result in enumerate(async_res.get_result().results):
+        job_ids = self._get_job_ids(batch_id)
+        progress_results: dict[str, tuple[JobStatus, pulser.backend.Results | None]] = (
+            {}
+        )
+        for job_id in job_ids:
+            # Query the AsyncResult associated to each Job
+            async_res = QLMServer.get_job(self._connection, job_id)
+            # Link the status of the Job to a pulser JobStatus
+            qlm_status = async_res.get_status()
+            status = PulserQLMConnection._convert_qlm_status_to_pulser_job(qlm_status)
+            if status != JobStatus.DONE:
+                # The result of a not DONE Job is None
+                progress_results[job_id] = (status, None)
+                continue
+            qlm_job = async_res.get_batch()
+            # If the Job is DONE, fetch its myqlm Result
+            result = async_res.get_result()
             # and make a pulser SampledResult, that needs the qubit ids and meas basis
             # that are in the submitted Sequence, that is in Job.schedule._other
-            job = qlm_batch[i]  # fetch the myQLM Job
-            job_id = job_ids[i]
             # Extract the Sequence in Job.schedule._other using deserialize_other
-            if job.schedule is None:
+            if qlm_job.schedule is None:
                 raise pulser.backend.remote.RemoteResultsError(
                     f"The Job {job_id} does not have a schedule: "
                     "it can't have run on the QPU.",
                 )
             try:
-                other_dict = deserialize_other(job.schedule._other)
+                other_dict = deserialize_other(qlm_job.schedule._other)
             except ValueError as e:
                 raise pulser.backend.remote.RemoteResultsError(
                     f"Failed at finding a Sequence in the schedule of Job {job_id}.",
                 ) from e
             seq = other_dict["seq"]  # the submitted Sequence
-            # Create a SmapledResult with qubit ids, meas basis of seq, result of Job
-            results[job_id] = (
+            # Create a SampledResult with qubit ids, meas basis of seq, result of Job
+            progress_results[job_id] = (
                 status,
                 pulser.result.SampledResult(
                     atom_order=seq.get_register(include_mappable=True).qubit_ids,
@@ -310,22 +296,48 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                     bitstring_counts=IsingAQPU.convert_result_to_samples(result),
                 ),
             )
-        return results
+        return progress_results
 
     def _get_batch_status(self, batch_id: str) -> BatchStatus:
         """Gets the status of a batch from its ID."""
-        qlm_status = QLMServer.get_job(self._connection, batch_id).get_status()
-        return PulserQLMConnection._convert_qlm_status_to_pulser_batch(qlm_status)
-
-    def _get_job_ids(self, batch_id: str) -> list[str]:
-        """Gets all the job IDs within a batch."""
-        qlm_batch = QLMServer.get_job(self._connection, batch_id).get_batch()
-        return PulserQLMConnection._get_job_ids_from_batch(qlm_batch)
+        jobs_progression = self.query_job_progress(batch_id)
+        statuses = [progression_result[0] for progression_result in jobs_progression]
+        if JobStatus.RUNNING in statuses:
+            # Batch is RUNNING if at least one Job is running
+            return BatchStatus.PENDING
+        # If No Job is RUNNING
+        if JobStatus.PENDING in statuses[0]:
+            # Batch is PENDING if no all Jobs have tried to run
+            return BatchStatus.PENDING
+        # If No Job is RUNNING anymore
+        if JobStatus.PAUSED in statuses:
+            # Batch is PAUSED if one Job is paused
+            return BatchStatus.ERROR
+        if JobStatus.ERROR in statuses:
+            # Batch is in ERROR if one Job is in error
+            return BatchStatus.ERROR
+        if JobStatus.CANCELED in statuses:
+            # Batch was CANCELED if one of its Job was canceled
+            return BatchStatus.CANCELED
+        assert len(set(statuses)) == 1 and statuses[0] == JobStatus.DONE
+        return BatchStatus.DONE
 
     def cancel_batch(self, batch_id: str) -> None:
         """Cancels a batch using its ID."""
-        QLMServer.get_job(self._connection, batch_id).cancel()
+        job_ids = self._get_job_ids(batch_id)
+        for job_id in job_ids:
+            QLMServer.get_job(self._connection, job_id).cancel()
 
     def delete_batch(self, batch_id: str) -> None:
         """Deletes the files of a batch using its ID."""
-        QLMServer.get_job(self._connection, batch_id).delete_files()
+        job_ids = self._get_job_ids(batch_id)
+        for job_id in job_ids:
+            QLMServer.get_job(self._connection, job_id).delete_files()
+
+    def get_batch(self, batch_id: str) -> qat.core.Batch:
+        """Returns a Batch associated with a batch_id."""
+        job_ids = self._get_job_ids(batch_id)
+        jobs = []
+        for job_id in job_ids:
+            jobs.append(QLMServer.get_job(self._connection, job_id).get_batch())
+        return qat.core.Batch(jobs=jobs)
