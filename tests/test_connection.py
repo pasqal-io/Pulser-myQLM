@@ -1,5 +1,7 @@
 """Tests for PulserQLMConnection."""
 
+from __future__ import annotations
+
 import time
 import typing
 from dataclasses import replace

@@ -299,16 +299,16 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
 
     def _get_batch_status(self, batch_id: str) -> BatchStatus:
         """Gets the status of a batch from its ID."""
-        jobs_progression = self.query_job_progress(batch_id)
+        jobs_progression = self._query_job_progress(batch_id)
         statuses = [progression_result[0] for progression_result in jobs_progression]
         if JobStatus.RUNNING in statuses:
             # Batch is RUNNING if at least one Job is running
             return BatchStatus.PENDING
-        # If No Job is RUNNING
-        if JobStatus.PENDING in statuses[0]:
-            # Batch is PENDING if no all Jobs have tried to run
+        # If no Job is RUNNING
+        if JobStatus.PENDING in statuses:
+            # Batch is PENDING if not all the Jobs have tried to run
             return BatchStatus.PENDING
-        # If No Job is RUNNING anymore
+        # If no Job is RUNNING/will be run anymore
         if JobStatus.PAUSED in statuses:
             # Batch is PAUSED if one Job is paused
             return BatchStatus.ERROR
