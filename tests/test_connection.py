@@ -8,12 +8,13 @@ from dataclasses import replace
 from threading import Thread
 from unittest import mock
 
+import numpy as np
 import pulser
 import pytest
 from pulser.backend.remote import JobParams
 from qat.comm.exceptions.ttypes import QPUException
 from qat.comm.qlmaas.ttypes import JobInfo, JobStatus
-from qat.core import Batch, BatchResult
+from qat.core import Job, Result
 from qat.qlmaas import QLMaaSConnection
 from qat.qlmaas.result import AsyncResult
 from qat.qlmaas.wrappers import ServiceDescription
@@ -37,13 +38,13 @@ class MockAsyncResult(AsyncResult):
         self.job_id = job_id
         self.connection = connection
 
-    def get_batch(self) -> Batch:
+    def get_batch(self) -> Job:
         return self.connection.batchs[self.job_id][0]
 
     def get_info(self) -> JobInfo:
         return MockJobInfo(self.job_id, self.get_status(False))
 
-    def get_result(self) -> BatchResult:
+    def get_result(self) -> Result:
         if self.connection.batchs[self.job_id][2] == JobStatus.DONE:
             return self.connection.batchs[self.job_id][1]
         else:
@@ -57,7 +58,7 @@ class MockAsyncResult(AsyncResult):
             "Human readable status is not implemented in MockAsyncResult."
         )
 
-    def join(self) -> BatchResult:
+    def join(self) -> Result:
         while self.get_status() != JobStatus.DONE:
             time.wait(1)
         return self.get_result()
@@ -122,7 +123,7 @@ class MockQLMaaSConnection(QLMaaSConnection):
                 else WrongRemoteFresnelQPU
             ),  # Has a device in its descr
         }
-        self.batchs: dict[str, list[Batch, BatchResult | None, JobStatus]] = {}
+        self.batchs: dict[str, list[Job, Result | None, JobStatus]] = {}
 
     def get_qpus(self) -> list[ServiceDescription]:
         return [ServiceDescription(qpu_name) for qpu_name in self.available_qpus]
@@ -136,15 +137,18 @@ class MockQLMaaSConnection(QLMaaSConnection):
     def get_job(self, job_id: str) -> MockAsyncResult:
         return MockAsyncResult(job_id, self)
 
-    def add_job(self, job_id: str, batch: Batch) -> None:
-        self.batchs[job_id] = [batch, None, JobStatus.WAITING]
+    def add_job(self, job_id: str, job: Job) -> None:
+        self.batchs[job_id] = [job, None, JobStatus.WAITING]
 
     def run_job(self, job_id: str) -> None:
         self.batchs[job_id][2] = JobStatus.RUNNING
 
-    def associate_result_to_job(self, job_id: str, result: BatchResult) -> None:
+    def associate_result_to_job(self, job_id: str, result: Result) -> None:
         self.batchs[job_id][1] = result
         self.batchs[job_id][2] = JobStatus.DONE
+
+    def set_job_as_error(self, job_id: str) -> None:
+        self.batchs[job_id][2] = JobStatus.FAILED
 
 
 @mock.patch("pulser_myqlm.connection.qat.qlmaas.QLMaaSConnection", MockQLMaaSConnection)
@@ -184,66 +188,94 @@ def test_seq_submission():
             self.name = "QLMaaSFresnelQPU"
             super().__init__(port=FRESNEL_PORT, ip="localhost")
 
-        def submit(self, batch: Batch) -> AsyncResult:
+        def submit(self, batch: Job, raise_err: bool = True) -> AsyncResult:
             job_id = mock_conn._connection._get_next_job_id()
             mock_conn._connection.add_job(job_id, batch)
             mock_conn._connection.run_job(job_id)
-            res = super().submit(batch)
+            try:
+                res = super().submit(batch)
+            except Exception as e:
+                mock_conn._connection.set_job_as_error(job_id)
+                if raise_err:
+                    raise e
+                return MockAsyncResult(job_id, mock_conn._connection)
             mock_conn._connection.associate_result_to_job(job_id, res)
             # async result needs connection
             return MockAsyncResult(job_id, mock_conn._connection)
 
     mock_conn._connection.available_qpus["RemoteFresnelQPU"] = QLMaaSFresnelQPU
     # Submitting a Sequence not built with a Device available on the Connection
-    seq = pulser.Sequence(pulser.Register.square(2, 5), pulser.AnalogDevice)
-    # No matter the Sequence, open batches are not supported
+    seq = pulser.Sequence(pulser.Register.square(2, 5, prefix="q"), pulser.AnalogDevice)
+    # [Open Batches] No matter the Sequence, open batches are not supported
     with pytest.raises(NotImplementedError, match="Open batches are not implemented"):
         mock_conn.submit(seq, open=True)
-    # Can't submit the Sequence since the measurement basis can't be determined
+    # [Meas] Can't submit the Sequence since the measurement basis can't be determined
     with pytest.raises(
         ValueError, match="The measurement basis can't be implicitly determined"
     ):
         mock_conn.submit(seq)
-    seq.measure("ground-rydberg")
-    # Can't submit the Sequence since device name is not among available
+    seq.declare_channel("rydberg_global", "rydberg_global")
+    # [Device] Can't submit the Sequence since device name is not among available
+    job_params = JobParams(runs=100, variables={})
     with pytest.raises(
         ValueError, match="The Sequence's device AnalogDevice doesn't match"
     ):
-        mock_conn.submit(seq)
-    # This is also raised if mimic_qpu is set to True
+        mock_conn.submit(seq, job_params=[job_params])
+    # [Device] This is also raised if mimic_qpu is set to True
     with pytest.raises(
         ValueError, match="does not match any of the devices currently available"
     ):
-        mock_conn.submit(seq, mimic_qpu=True)
+        mock_conn.submit(seq, job_params=[job_params], mimic_qpu=True)
     # Using a Device with the right name, but different specs
     seq = seq.switch_device(replace(pulser.MockDevice, name="Fresnel"))
-    # Submitting without specifying the Job Parameters creates an empty batch
-    res = mock_conn.submit(seq)
-    assert isinstance(res, pulser.backend.remote.RemoteResults)
-    assert res.batch_id == "0"
-    assert res.job_ids == []
-    assert res.get_batch_status() == pulser.backend.remote.BatchStatus.DONE
-    assert res.get_available_results() == {}
-    # Submitting to an already existing batch raises an error
-    with pytest.raises(NotImplementedError, match="It is not possible to add jobs"):
-        mock_conn.submit(seq, batch_id="0")
-    # Submitting with Job Parameters
-    with pytest.raises(AttributeError, match="'str' object has no attribute 'get'"):
-        # must provide a list of JobParams TODO: Improve error message
+    # [JobParams] Can't submit without specifying the Job Parameters
+    with pytest.raises(ValueError, match="'job_params' must be specified"):
+        mock_conn.submit(seq)
+    # [JobParams] Must be a list of JobParams
+    with pytest.raises(TypeError, match="'job_params' must be a list;"):
         mock_conn.submit(seq, job_params=JobParams(runs=100, variables={}))
-    # QPU doesn't accept a Sequence with a device with a different rydberg level
+    with pytest.raises(
+        TypeError, match="All elements of 'job_params' must be dictionaries; "
+    ):
+        mock_conn.submit(seq, job_params=[100])
+    # [Device] QPU doesn't accept Sequence with a device with a different rydberg level
     assert seq.device.rydberg_level != (fresnel_device := FresnelQPU(None).device)
     with pytest.raises(QPUException, match="The Sequence in job.schedule._other"):
-        mock_conn.submit(seq, job_params=[JobParams(runs=100, variables={})])
-    # Using a Device with the right name and right Rydberg level
-    seq = seq.switch_device(
-        replace(seq.device, rydberg_level=fresnel_device.rydberg_level)
-    )
-    # QPU rejects the Sequence because it requires a layout
+        mock_conn.submit(seq, job_params=[job_params])
+    mock_conn._query_job_progress("0") == {"0": [pulser.backend.remote.JobStatus.ERROR]}
+    with pytest.raises(ValueError, match="Job id 1 is invalid for batch"):
+        mock_conn._fetch_result("0", ["1"])
+    with pytest.raises(
+        pulser.backend.remote.RemoteResultsError,
+        match="The results are not yet available",
+    ):
+        mock_conn._fetch_result("0", ["0"])
+    # [Device] This can be verified prior to submission with mimic_qpu
+    with pytest.raises(
+        ValueError, match="The sequence is not compatible with the latest device specs"
+    ):
+        mock_conn.submit(seq, job_params=[job_params], mimic_qpu=True)
+    # [Device] Using a Device with the right name and right Rydberg level
+    seq = seq.switch_device(replace(pulser.AnalogDevice, name="Fresnel"))
+    # [JobParams] Don't accept job if too many runs in job params
+    with pytest.raises(
+        ValueError, match="All 'runs' must be below the maximum allowed by the device"
+    ):
+        mock_conn.submit(
+            seq, job_params=[JobParams(runs=fresnel_device.max_runs + 1, variables={})]
+        )
+    # [Register] QPU rejects the Sequence because it requires a layout
     assert fresnel_device.requires_layout
     with pytest.raises(QPUException, match="must be defined from a layout."):
-        mock_conn.submit(seq, job_params=[JobParams(runs=100, variables={})])
-    # QPU requires a layout defined from calibrated layouts
+        mock_conn.submit(seq, job_params=[job_params])
+    # [Register] Checked prior to submission with mimic_qpu
+    assert fresnel_device.requires_layout
+    with pytest.raises(
+        ValueError,
+        match="requires the sequence's register to be defined from a `RegisterLayout`",
+    ):
+        mock_conn.submit(seq, job_params=[job_params], mimic_qpu=True)
+    # [Register] QPU requires a layout defined from calibrated layouts
     assert not fresnel_device.accepts_new_layouts
     square_layout = pulser.register.special_layouts.SquareLatticeLayout(4, 4, 5)
     assert not fresnel_device.is_calibrated_layout(square_layout)
@@ -251,15 +283,53 @@ def test_seq_submission():
     with pytest.raises(
         QPUException, match="must be defined from one of the calibrated layouts"
     ):
-        mock_conn.submit(seq, job_params=[JobParams(runs=100, variables={})])
-    # Using a layout from calibrated layouts
+        mock_conn.submit(seq, job_params=[job_params])
+    # [Register] also checked prior to submission to the QPU
+    with pytest.raises(
+        ValueError, match="the register's layout must be one of the layouts available"
+    ):
+        mock_conn.submit(seq, job_params=[job_params], mimic_qpu=True)
+    # [Register] Using a layout from calibrated layouts
     seq._set_register(
         seq,
-        fresnel_device.pre_calibrated_layouts[0].define_register(
-            21, 26, 35, 39, 34, 25
-        ),
+        fresnel_device.pre_calibrated_layouts[0].define_register(21, 26, 35, 39),
     )
+    # [JobParams] The max number of submission is also checked with mimic_qpu
+    assert seq.register.layout in fresnel_device.pre_calibrated_layouts
+    with pytest.raises(
+        ValueError, match="All 'runs' must be below the maximum allowed by the device"
+    ):
+        mock_conn.submit(
+            seq,
+            job_params=[JobParams(runs=fresnel_device.max_runs + 1, variables={})],
+            mimic_qpu=True,
+        )
+    # [Sequence] An empty sequence cannot run on the QPU
     with pytest.raises(
         QPUException, match="The Sequence should contain at least one Pulse"
     ):
-        res = mock_conn.submit(seq, job_params=[JobParams(runs=100, variables={})])
+        res = mock_conn.submit(seq, job_params=[job_params])
+    # Adding a pulse to the Sequence
+    seq.add(pulser.Pulse.ConstantPulse(1000, np.pi, 0, 0), "rydberg_global")
+    job_id = mock_conn._connection._get_next_job_id()
+    res = mock_conn.submit(seq, job_params=[job_params])
+    assert res.batch_id == f"{job_id}"
+    assert res.job_ids == [f"{job_id}"]
+    assert res.get_batch_status() == pulser.backend.remote.BatchStatus.DONE
+    assert len(res.get_available_results()) == 1
+    assert res.get_available_results()[f"{job_id}"] == {"1111": job_params["runs"]}
+    assert res.results == [{"1111": job_params["runs"]}]
+    # Submitting to an already existing batch raises an error
+    with pytest.raises(NotImplementedError, match="It is not possible to add jobs"):
+        mock_conn.submit(seq, batch_id=f"{job_id}")
+        res = mock_conn.submit(seq, job_params=[job_params])
+    # Submitting multiple batch
+    job_id += 1
+    job_params_2 = JobParams(runs=200, variables={})
+    res = mock_conn.submit(seq, job_params=[job_params, job_params_2])
+    assert res.batch_id == f"{job_id}|{job_id+1}"
+    assert res.job_ids == [f"{job_id}", f"{job_id+1}"]
+    assert res.get_batch_status() == pulser.backend.remote.BatchStatus.DONE
+    assert len(res.get_available_results()) == 2
+    assert res.get_available_results()[f"{job_id}"] == {"1111": job_params["runs"]}
+    assert res.get_available_results()[f"{job_id+1}"] == {"1111": job_params_2["runs"]}

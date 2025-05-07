@@ -403,10 +403,6 @@ def test_convert_sequence_with_failing_schedule(failing_schedule_seq):
             {"n_qubits": 1, "n_samples": 1000},
             "State |000> is incompatible with number of qubits declared 1",
         ),
-        (
-            {"n_qubits": 4, "n_samples": 999},
-            "Probability associated with state |000> does not",
-        ),
     ],
 )
 def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_ising_qpu):

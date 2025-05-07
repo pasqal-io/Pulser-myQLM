@@ -127,12 +127,15 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                 "Open batches are not implemented in Qaptiva Access."
             )
         sequence = self._add_measurement_to_sequence(sequence)
+        # Check that Job Params are correctly defined
         job_params: list[pulser.backend.remote.JobParams] = (
             pulser.json.utils.make_json_compatible(kwargs.get("job_params", []))
         )
         mimic_qpu: bool = kwargs.get("mimic_qpu", False)
         if mimic_qpu:
+            # Replace the sequence's device by the QPU's
             sequence = self.update_sequence_device(sequence)
+            # Check that the job params match with the max number of runs
             pulser.QPUBackend.validate_job_params(job_params, sequence.device.max_runs)
 
         # In PasqalCloud, if batch_id is not empty, we can submit new jobs to a
@@ -154,6 +157,8 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                 "fetch_available_devices() and change your Sequence's device using"
                 "its switch_device method."
             )
+        # Check JobParams'
+        pulser.QPUBackend.validate_job_params(job_params, device.max_runs)
         # Instantiate the targeted QPU
         connected_qpu = QLMServer.get_qpu(self._connection, qpu_id)
         # Submit one myQLM Job per job params

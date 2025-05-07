@@ -70,7 +70,6 @@ class QLMQPUServer:
     def __init__(self, qpu: QLMaaSQPU):
         self.qpu: QLMaaSQPU = qpu
 
-    @backoff_decorator_qlm
     def submit(self, batch: Job) -> AsyncResultServer:
         """Submits a batch to the QPU. Creates an AsyncResultServer."""
         return AsyncResultServer(self.qpu.submit(batch))
