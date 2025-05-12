@@ -24,8 +24,8 @@ JOB_STATUS_QLM_TO_PULSER_JOB: dict[qat.comm.qlmaas.ttypes.JobStatus, JobStatus] 
     qat.comm.qlmaas.ttypes.JobStatus.CANCELLED: JobStatus.CANCELED,
     qat.comm.qlmaas.ttypes.JobStatus.UNKNOWN_JOB: JobStatus.ERROR,
     qat.comm.qlmaas.ttypes.JobStatus.IN_BUCKET: JobStatus.PENDING,
-    qat.comm.qlmaas.ttypes.JobStatus.DELETED: JobStatus.ERROR,
-    qat.comm.qlmaas.ttypes.JobStatus.STOPPED: JobStatus.CANCELED,
+    qat.comm.qlmaas.ttypes.JobStatus.DELETED: JobStatus.CANCELED,
+    qat.comm.qlmaas.ttypes.JobStatus.STOPPED: JobStatus.PAUSED,
     qat.comm.qlmaas.ttypes.JobStatus.FAILED: JobStatus.ERROR,
 }
 
@@ -123,6 +123,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
     ) -> pulser.backend.remote.RemoteResults:
         """Submits the sequence for execution on a remote Pasqal backend."""
         if open:
+            assert not self.supports_open_batch()
             raise NotImplementedError(
                 "Open batches are not implemented in Qaptiva Access."
             )
@@ -305,10 +306,13 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
     def _get_batch_status(self, batch_id: str) -> BatchStatus:
         """Gets the status of a batch from its ID."""
         jobs_progression = self._query_job_progress(batch_id)
-        statuses = [progression_result[0] for progression_result in jobs_progression]
+        statuses = [
+            progression_result[0]
+            for (job, progression_result) in jobs_progression.items()
+        ]
         if JobStatus.RUNNING in statuses:
             # Batch is RUNNING if at least one Job is running
-            return BatchStatus.PENDING
+            return BatchStatus.RUNNING
         # If no Job is RUNNING
         if JobStatus.PENDING in statuses:
             # Batch is PENDING if not all the Jobs have tried to run
@@ -316,7 +320,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         # If no Job is RUNNING/will be run anymore
         if JobStatus.PAUSED in statuses:
             # Batch is PAUSED if one Job is paused
-            return BatchStatus.ERROR
+            return BatchStatus.PAUSED
         if JobStatus.ERROR in statuses:
             # Batch is in ERROR if one Job is in error
             return BatchStatus.ERROR
