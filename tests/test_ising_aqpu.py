@@ -473,6 +473,24 @@ def test_convert_sequence_to_job(schedule_seq, modulation):
         else (schedule_from_seq.to_job().nbshots is None)
     )
     assert job_from_seq.schedule._other == schedule_from_seq._other
+    # converting a parametrized sequence fails
+    amp = seq.declare_variable("amp", dtype=float)
+    seq.add(Pulse.ConstantPulse(1000, amp, 0, 0), "ryd_glob")
+    with pytest.raises(
+        NotImplementedError, match="Parametrized sequences can't be sampled."
+    ):
+        IsingAQPU.convert_sequence_to_job(seq, modulation=modulation)
+    # Can't simulate a sequence with a mappable register
+    mappable_seq = Sequence(
+        seq.register.layout.make_mappable_register(n_qubits=10), seq.device
+    )
+    mappable_seq.declare_channel("rydberg_global", "rydberg_global")
+    mappable_seq.add(Pulse.ConstantPulse(1000, np.pi, 0, 0), "rydberg_global")
+    with pytest.raises(
+        RuntimeError,
+        match="Can't access the sequence's register because the register is mappable",
+    ):
+        IsingAQPU.convert_sequence_to_job(mappable_seq)
 
 
 @pytest.mark.parametrize(
@@ -540,6 +558,7 @@ def test_run_sequence_ising(schedule_seq, circuit_job):
         (Sample(probability=0.9995, state=0), "|000>"),
         (Sample(probability=0.0005, state=2), "|010>"),
     ]
+    print(result_empty_sch.raw_data)
     compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
     assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
         "000": 1999,

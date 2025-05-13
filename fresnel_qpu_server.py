@@ -51,7 +51,7 @@ if __name__ == "__main__":
         )
     # a FresnelQPU connected to a remote VM
     print("Connecting to IP:", args.qpu_ip, ", PORT:", args.qpu_port)
-    fresnel_qpu = FresnelQPU(f"http://{args.qpu_ip}:{args.qpu_port}/api/", version="v1")
+    fresnel_qpu = FresnelQPU(f"http://{args.qpu_ip}:{args.qpu_port}/api", version="v1")
     print("Connected. QPU is operational:", fresnel_qpu.is_operational)
 
     # Deploy the QPU on a port and ip
