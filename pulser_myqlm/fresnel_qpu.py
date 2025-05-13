@@ -25,7 +25,7 @@ from pulser_myqlm.helpers.requests import JobInfo, PasqalQPUClient
 from pulser_myqlm.helpers.simulate_seq import simulate_seq
 from pulser_myqlm.ising_aqpu import IsingAQPU
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class FresnelQPU(QPUHandler):
@@ -40,7 +40,8 @@ class FresnelQPU(QPUHandler):
             pulser_simulation is used to simulate the Sequence.
         version: The version of the API to use, added at the end of the base URI.
         max_nbshots: The maximum number of shots per job. Default to
-            `pulser_myqlm.devices.DEFAULT_NUMBER_OF_SHOTS`.
+            `pulser_myqlm.devices.DEFAULT_NUMBER_OF_SHOTS`. Number of shots per
+            job will also be limited by the QPU itself.
     """
 
     def __init__(
@@ -50,24 +51,25 @@ class FresnelQPU(QPUHandler):
         max_nbshots: int = DEFAULT_NUMBER_OF_SHOTS,
     ):
         super().__init__()
-        self.max_nbshots = max_nbshots
-        self.qpu_client = (
+        self._max_nbshots = max_nbshots
+        self._qpu_client = (
             None if base_uri is None else PasqalQPUClient(base_uri, version)
         )
+        # Check that base URI is correct and communication with QPU works
         self.is_operational
 
     @property
     def base_uri(self) -> None | str:
         """Base URI of the API of the QPU."""
-        return None if self.qpu_client is None else self.qpu_client.base_uri
+        return None if self._qpu_client is None else self._qpu_client.base_uri
 
     @property
     def is_operational(self) -> bool:
         """Returns whether or not the system is operational."""
-        if self.qpu_client is None:
+        if self._qpu_client is None:
             return True
         try:
-            operational_status = self.qpu_client.get_operational_status()
+            operational_status = self._qpu_client.get_operational_status()
         except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.ABORT,
@@ -77,12 +79,12 @@ class FresnelQPU(QPUHandler):
         return operational_status == "UP"
 
     @property
-    def deserialized_device(self) -> str:
+    def _deserialized_device(self) -> str:
         """The Device implemented by the hardware as a JSON string."""
-        if self.qpu_client is None:
+        if self._qpu_client is None:
             return TEMP_DEVICE.to_abstract_repr()
         try:
-            device = self.qpu_client.get_specs()
+            device = self._qpu_client.get_specs()
         except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.NONERESULT,
@@ -92,11 +94,11 @@ class FresnelQPU(QPUHandler):
         return device
 
     @property
-    def device(self) -> Device:
+    def _device(self) -> Device:
         """The current state of the Device implemented by the hardware."""
-        if self.qpu_client is None:
+        if self._qpu_client is None:
             return TEMP_DEVICE
-        return cast(Device, deserialize_device(self.deserialized_device))
+        return cast(Device, deserialize_device(self._deserialized_device))
 
     def get_specs(self) -> HardwareSpecs:
         """Returns the HardwareSpecs of the QPU.
@@ -105,29 +107,9 @@ class FresnelQPU(QPUHandler):
         of the HardwareSpecs. The Pulser Device can be obtained by using
         'pulser.json.abstract_repr.deserializer.deserialize_device'.
         """
-        return HardwareSpecs(description=self.deserialized_device)
+        return HardwareSpecs(description=self._deserialized_device)
 
-    def check_system(self, raise_error: bool = False) -> None:
-        """Raises a warning or an error if the system is not operational.
-
-        Deprecated. Not used in this class anymore.
-        Maintained for backwards compatibility.
-        """
-        warnings.warn(
-            "This method is deprecated, use poll_system instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if not self.is_operational:
-            msg = (
-                "QPU not operational, please run calibration and validation of the "
-                "devices prior to creating the FresnelQPU"
-            )
-            if raise_error:
-                raise QPUException(ErrorType.ABORT, message=msg)
-            warnings.warn(msg, UserWarning)
-
-    def poll_system(self) -> None:
+    def _poll_system(self) -> None:
         """Polls QPU until it is operational."""
         msg = f"QPU not operational, will try again in {QPU_POLLING_INTERVAL_SECONDS}s"
         while not self.is_operational:
@@ -157,22 +139,26 @@ class FresnelQPU(QPUHandler):
                     a maximum of 10 running threads
                 "fork": multi-process server, each connection runs in a new process
         """
-        self.poll_system()
+        self._poll_system()
         super().serve(port, host_ip, server_type, **kwargs)
 
-    def poll_job_results(self, job_response: JobInfo) -> JobInfo:
+    def _wait_job_results(self, job_info: JobInfo) -> JobInfo:
         """Wait for the job to finish before querying results."""
-        if self.qpu_client is None:
+        if self._qpu_client is None:
             raise QPUException(
                 ErrorType.ABORT,
                 message="Results are only available if base_uri is defined",
             )
-        job_id = job_response.get_id()
-        while job_response.get_status() not in ["ERROR", "DONE", "CANCELED"]:
+        job_id = job_info.get_id()
+        while job_info.get_status() not in ["ERROR", "DONE"]:
+            # We can't know how long processing the job will take on the QPU
+            # We want to get the result, no matter QPU's availability
+            # We poll the status of the job until termination ("ERROR" or "DONE")
             try:
-                job_response = self.qpu_client.get_job_info(job_id)
+                # No Backoff to handle errors separately
+                job_info = self._qpu_client.get_job_info(job_id, no_backoff=True)
             except requests.ConnectionError:
-                LOGGER.exception(
+                logger.exception(
                     "Job request raised Connection Error, trying again in "
                     f"{JOB_POLLING_INTERVAL_SECONDS}s",
                 )
@@ -182,7 +168,7 @@ class FresnelQPU(QPUHandler):
                         ErrorType.NONERESULT,
                         f"An error occured fetching your results: {repr(e)}",
                     )
-                LOGGER.exception(
+                logger.exception(
                     f"Job request returned a {e.response.status_code} code,"
                     + f" trying again in {JOB_POLLING_INTERVAL_SECONDS}s"
                 )
@@ -194,14 +180,14 @@ class FresnelQPU(QPUHandler):
             time.sleep(JOB_POLLING_INTERVAL_SECONDS)
 
         # Check that the job submission went well
-        if job_response.get_status() == "ERROR":
+        if job_info.get_status() == "ERROR":
             raise QPUException(
                 ErrorType.NONERESULT,
                 "An error occured, check locally the Sequence before submitting or "
                 "contact the support.",
             )
 
-        return job_response
+        return job_info
 
     def submit_job(self, job: Job) -> Result:
         """Submit a MyQLM job encapsulating a Pulser Sequence to the QPU.
@@ -224,8 +210,25 @@ class FresnelQPU(QPUHandler):
                 message=f"Failed at deserializing Job.Schedule._other. Got {repr(e)}",
             )
         seq = other_dict["seq"]
+        if seq.is_parametrized():
+            raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
+                message=(
+                    "Can't submit a parametrized sequence. Assign a value to each "
+                    f"variable of the Sequence {list(seq.declared_variables.keys())}"
+                    " prior to submission."
+                ),
+            )
+        if seq.is_register_mappable():
+            raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
+                message=(
+                    "Can't submit a sequence with a mappable register. Assign "
+                    "coordinates to each qubit of the Sequence prior to submission."
+                ),
+            )
         # Validate that Sequence is compatible with FresnelDevice
-        current_device = self.device
+        current_device = self._device
         try:
             if seq.device != current_device:
                 seq = seq.switch_device(current_device, strict=True)
@@ -233,7 +236,7 @@ class FresnelQPU(QPUHandler):
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
                 message="The Sequence in job.schedule._other['abstr_seq'] is not "
-                f"compatible with the specs of the QPU: {self.device.specs}. Got "
+                f"compatible with the specs of the QPU: {self._device.specs}. Got "
                 f"error {repr(e)}",
             )
         if current_device.requires_layout and seq.register.layout is None:
@@ -265,24 +268,30 @@ class FresnelQPU(QPUHandler):
             )
         modulation = other_dict.get("modulation", False)
         # Check that the system is operational
-        self.poll_system()
+        self._poll_system()
         # Submit a job to the API
-        nb_run = self.max_nbshots if not job.nbshots else job.nbshots
-        if self.qpu_client is None:
+        max_nb_run = min(self._max_nbshots, current_device.max_runs)
+        nb_run = max_nb_run if not job.nbshots else job.nbshots
+        if nb_run > max_nb_run:
+            raise QPUException(
+                ErrorType.NOT_SIMULATABLE,
+                message=f"Too many runs asked. Max number of runs is {max_nb_run}.",
+            )
+        if self._qpu_client is None:
             pulser_results = simulate_seq(seq, modulation, nb_run)
             myqlm_result = IsingAQPU.convert_samples_to_result(pulser_results)
             return myqlm_result
         try:
-            job_response = self.qpu_client.post_job(nb_run, seq.to_abstract_repr())
+            job_info = self._qpu_client.create_job(nb_run, seq.to_abstract_repr())
         except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.ABORT, message=f"Could not create job: Got {repr(e)}"
             )
-        LOGGER.info(
-            f"Job #{job_response.get_id()} created, status: {job_response.get_status()}"
+        logger.info(
+            f"Job #{job_info.get_id()} created, status: {job_info.get_status()}"
         )
 
-        job_response = self.poll_job_results(job_response)
+        job_info = self._wait_job_results(job_info)
 
         # Convert the output of the API into a MyQLM Result
-        return IsingAQPU.convert_samples_to_result(job_response.get_counter_result())
+        return IsingAQPU.convert_samples_to_result(job_info.get_counter_result())
