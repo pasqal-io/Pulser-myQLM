@@ -65,7 +65,7 @@ class PasqalQPUClient:
         response = self._get_backoff("/system")
         return json.dumps(response.json()["data"]["specs"])
 
-    def get_job_info(self, job_id: int, no_backoff=False) -> JobInfo:
+    def get_job_info(self, job_id: int, no_backoff: bool = False) -> JobInfo:
         """Gets information on a submitted job."""
         response = (self._get if no_backoff else self._get_backoff)(f"/jobs/{job_id}")
         return JobInfo(response.json()["data"])
