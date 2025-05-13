@@ -176,7 +176,7 @@ def test_available_devices():
     # in the description of their HardwareSpecs are shown.
     mock_conn = PulserQLMConnection()
     assert mock_conn.fetch_available_devices() == {
-        "RemoteFresnelQPU": FresnelQPU(None).device
+        "RemoteFresnelQPU": FresnelQPU(None)._device
     }
 
 
@@ -248,7 +248,7 @@ def test_seq_submission():
     ):
         mock_conn.submit(seq, job_params=[100])
     # [Device] QPU doesn't accept Sequence with a device with a different rydberg level
-    assert seq.device.rydberg_level != (fresnel_device := FresnelQPU(None).device)
+    assert seq.device.rydberg_level != (fresnel_device := FresnelQPU(None)._device)
     with pytest.raises(QPUException, match="The Sequence in job.schedule._other"):
         mock_conn.submit(seq, job_params=[job_params])
     mock_conn._query_job_progress("0") == {"0": [pulser.backend.remote.JobStatus.ERROR]}
@@ -403,7 +403,7 @@ def test_batch_status():
     server_thread.start()
     mock_conn = PulserQLMConnection()
     seq = pulser.Sequence(
-        FresnelQPU(None).device.pre_calibrated_layouts[0].define_register(6, 9, 54, 51),
+        FresnelQPU(None)._device.pre_calibrated_layouts[0].define_register(6, 9, 54, 51),
         pulser.AnalogDevice,
     )
     seq.declare_channel("rydberg_global", "rydberg_global")
