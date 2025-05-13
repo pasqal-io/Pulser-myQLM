@@ -17,7 +17,7 @@ from pulser.json.abstract_repr.deserializer import deserialize_device
 from pulser.register import Register
 from pulser.register.special_layouts import TriangularLatticeLayout
 from qat.comm.exceptions.ttypes import QPUException
-from qat.core import Job, Sample, Schedule
+from qat.core import Job, Observable, Sample, Schedule
 
 from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
 from pulser_myqlm.helpers.requests import JobInfo
@@ -201,8 +201,6 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
         # pulser-simulation in FresnelQPU is used
         sim_qpu = FresnelQPU(None)
         assert sim_qpu.is_operational
-        with pytest.warns(DeprecationWarning, match="This method is deprecated"):
-            sim_qpu.check_system()
     if qpu == "remote":
         # pulser-simulation in a Remote FresnelQPU is used
         # Deploying a FresnelQPU on a remote server using serve
@@ -219,6 +217,12 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
         QPUException, match="FresnelQPU can only execute a schedule job."
     ):
         aqpu.submit(circuit_job)
+
+    # Job also needs its schedule to have _other defined
+    with pytest.raises(
+        QPUException, match="job.schedule._other must be a string encoded in bytes."
+    ):
+        aqpu.submit(Schedule(Observable(2)).to_job())
 
     # Run job created from a sequence using convert_sequence_to_job
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
@@ -254,6 +258,46 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
         "000": 1999,
         "010": 1,
     }
+    # Can't simulate a Job with too many shots
+    too_many_shots_job = IsingAQPU.convert_sequence_to_job(
+        seq, nbshots=10 * TEMP_DEVICE.max_runs
+    )
+    with pytest.raises(QPUException, match="Too many runs asked"):
+        aqpu.submit(too_many_shots_job)
+
+    # Can't simulate a parametrized sequence
+    amp = seq.declare_variable("amp", dtype=float)
+    seq.add(Pulse.ConstantPulse(1000, amp, 0, 0), "ryd_glob")
+    assert seq.is_parametrized()
+    _other = json.dumps(
+        {"abstr_seq": seq.to_abstract_repr(), "modulation": False}
+    ).encode("utf-8")
+    param_schedule = Schedule()
+    param_schedule._other = _other
+    param_job = Job()
+    param_job.schedule = param_schedule
+    with pytest.raises(QPUException, match="Can't submit a parametrized sequence."):
+        aqpu.submit(param_job)
+
+    # Can't simulate a sequence with a mappable register
+    mappable_seq = Sequence(
+        seq.register.layout.make_mappable_register(n_qubits=10), seq.device
+    )
+    mappable_seq.declare_channel("rydberg_global", "rydberg_global")
+    mappable_seq.add(Pulse.ConstantPulse(1000, np.pi, 0, 0), "rydberg_global")
+    assert mappable_seq.is_register_mappable()
+    _other = json.dumps(
+        {"abstr_seq": mappable_seq.to_abstract_repr(), "modulation": False}
+    ).encode("utf-8")
+    mappable_schedule = Schedule()
+    mappable_schedule._other = _other
+    mappable_job = Job()
+    mappable_job.schedule = mappable_schedule
+
+    with pytest.raises(
+        QPUException, match="Can't submit a sequence with a mappable register."
+    ):
+        aqpu.submit(mappable_job)
 
 
 class SideEffect:
@@ -418,20 +462,6 @@ def test_job_simulation(
     compare_results_raw_data(result.raw_data, exp_result)
 
 
-@mock.patch(
-    "pulser_myqlm.fresnel_qpu.requests.get",
-    side_effect=mocked_requests_get_non_operational,
-)
-def test_check_system(_):
-    fresnel_qpu = FresnelQPU(base_uri=BASE_URI)
-    with pytest.warns(DeprecationWarning, match="This method is deprecated,"):
-        with pytest.warns(UserWarning, match="QPU not operational,"):
-            fresnel_qpu.check_system()
-    with pytest.raises(QPUException, match="QPU not operational"):
-        with pytest.warns(DeprecationWarning, match="This method is deprecated"):
-            fresnel_qpu.check_system(raise_error=True)
-
-
 @mock.patch("pulser_myqlm.fresnel_qpu.requests.post")
 @mock.patch("pulser_myqlm.fresnel_qpu.requests.get")
 @mock.patch("pulser_myqlm.constants.QPU_POLLING_INTERVAL_SECONDS")
@@ -488,7 +518,7 @@ def test_non_operational_qpu(
         if base_uri
         else nullcontext()
     ):
-        fresnel_qpu.poll_system()
+        fresnel_qpu._poll_system()
 
     # Set response to non operational for first polling atempt
     # Set response to success in second polling attempt
@@ -635,7 +665,7 @@ def test_job_polling_success(_, mock_get, remote_fresnel, schedule_seq):
         mocked_requests_get_success,
     ]
     mock_get.side_effect = SideEffect(*polling_behaviour)
-    result = fresnel_qpu.poll_job_results(job_response)
+    result = fresnel_qpu._wait_job_results(job_response)
     assert result.get_status() == "DONE"
     # Test job polling on full QPU
     mock_get.side_effect = mocked_requests_get_success
@@ -689,7 +719,7 @@ def test_device_fetching_job_polling_errors(
         with pytest.raises(
             QPUException, match="Results are only available if base_uri is defined"
         ):
-            fresnel_qpu.poll_job_results(JobInfo({}))
+            fresnel_qpu._wait_job_results(JobInfo({}))
         return
 
     post_address = fresnel_qpu.base_uri + "/jobs"
@@ -723,7 +753,7 @@ def test_device_fetching_job_polling_errors(
         with pytest.raises(
             QPUException, match="An error occured fetching your results:"
         ):
-            fresnel_qpu.poll_job_results(job_response)
+            fresnel_qpu._wait_job_results(job_response)
 
         qpu_behaviour = (
             starting_successes + [mocked_requests_get]
@@ -753,7 +783,7 @@ def test_device_fetching_job_polling_errors(
             *[mocked_requests_get, mocked_requests_get_success]
         )
         with caplog.at_level(logging.ERROR):
-            fresnel_qpu.poll_job_results(job_response)
+            fresnel_qpu._wait_job_results(job_response)
         assert "trying again in" in caplog.text
     # Can't get a response if the Job terminates with an error
     mock_get.side_effect = mocked_requests_get_error
@@ -766,7 +796,7 @@ def test_device_fetching_job_polling_errors(
             + " before submitting or contact the support."
         ),
     ):
-        fresnel_qpu.poll_job_results(job_response)
+        fresnel_qpu._wait_job_results(job_response)
 
     qpu_behaviour = successes + [mocked_requests_get_error]
     mock_get.side_effect = SideEffect(*qpu_behaviour)

@@ -40,7 +40,7 @@ class JobInfo:
 
 
 class PasqalQPUClient:
-    """Static methods to call the QPU API.
+    """A client to communicate with the QPU's API.
 
     Args:
         base_uri: the IP address of the QPU.
@@ -56,22 +56,22 @@ class PasqalQPUClient:
         return self._base_uri
 
     def get_operational_status(self) -> str:
-        """Gets QPU's operational status by calling the API using its base URI."""
+        """Gets QPU's operational status."""
         response = self._get_backoff("/system/operational")
         return cast(str, response.json()["data"]["operational_status"])
 
     def get_specs(self) -> str:
-        """Gets the Device implemented by the QPU from its API."""
+        """Gets the Device implemented by the QPU."""
         response = self._get_backoff("/system")
         return json.dumps(response.json()["data"]["specs"])
 
-    def get_job_info(self, job_id: int) -> JobInfo:
+    def get_job_info(self, job_id: int, no_backoff=False) -> JobInfo:
         """Gets information on a submitted job."""
-        response = self._get(f"/jobs/{job_id}")
+        response = (self._get if no_backoff else self._get_backoff)(f"/jobs/{job_id}")
         return JobInfo(response.json()["data"])
 
-    def post_job(self, nb_run: int, abstract_sequence: str) -> JobInfo:
-        """Posts a Job to the QPU to run an abstract Sequence nb_run times."""
+    def create_job(self, nb_run: int, abstract_sequence: str) -> JobInfo:
+        """Create a Job on the QPU to run an abstract Sequence nb_run times."""
         payload = {"nb_run": nb_run, "pulser_sequence": abstract_sequence}
         response = self._post_backoff("/jobs", payload)
         return JobInfo(response.json()["data"])
