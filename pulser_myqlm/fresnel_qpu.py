@@ -270,7 +270,11 @@ class FresnelQPU(QPUHandler):
         # Check that the system is operational
         self._poll_system()
         # Submit a job to the API
-        max_nb_run = self._max_nbshots if current_device.max_runs is None else min(self._max_nbshots, current_device.max_runs)
+        max_nb_run = (
+            self._max_nbshots
+            if current_device.max_runs is None
+            else min(self._max_nbshots, current_device.max_runs)
+        )
         nb_run = max_nb_run if not job.nbshots else job.nbshots
         if nb_run > max_nb_run:
             raise QPUException(
