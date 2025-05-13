@@ -403,7 +403,9 @@ def test_batch_status():
     server_thread.start()
     mock_conn = PulserQLMConnection()
     seq = pulser.Sequence(
-        FresnelQPU(None)._device.pre_calibrated_layouts[0].define_register(6, 9, 54, 51),
+        FresnelQPU(None)
+        ._device.pre_calibrated_layouts[0]
+        .define_register(6, 9, 54, 51),
         pulser.AnalogDevice,
     )
     seq.declare_channel("rydberg_global", "rydberg_global")
