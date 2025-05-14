@@ -14,7 +14,7 @@ from pulser_myqlm.helpers.deserialize_other import deserialize_other
 from pulser_myqlm.helpers.qlm_connection import QLMServer
 from pulser_myqlm.ising_aqpu import IsingAQPU
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 JOB_STATUS_QLM_TO_PULSER_JOB: dict[qat.comm.qlmaas.ttypes.JobStatus, JobStatus] = {
@@ -201,7 +201,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             try:
                 qpu_server = QLMServer.get_qpu(self._connection, qpu_name)
             except (RuntimeError, TypeError):
-                LOGGER.debug(
+                logger.debug(
                     f"QLMaaSQPU {qpu_name} does not contain a Device (can't be "
                     "initialized without providing arguments)."
                 )
@@ -215,7 +215,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                 )
             except (TypeError, DeserializeDeviceError) as e:
                 # Go to the next QPU if no device was found
-                LOGGER.debug(
+                logger.debug(
                     "Can't find a correct Device in description of specs of QLMaaSQPU "
                     f"{qpu_name}. Got {repr(e)}."
                 )
