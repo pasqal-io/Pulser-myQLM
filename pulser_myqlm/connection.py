@@ -158,7 +158,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                 "fetch_available_devices() and change your Sequence's device using"
                 "its switch_device method."
             )
-        # Check JobParams'
+        # Check JobParams
         pulser.QPUBackend.validate_job_params(job_params, device.max_runs)
         # Instantiate the targeted QPU
         connected_qpu = QLMServer.get_qpu(self._connection, qpu_id)
@@ -173,6 +173,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                 seq_to_submit.is_parametrized() or seq_to_submit.is_register_mappable()
             )
             results.append(
+                # no backoff on submit to have Jobs submitted once
                 connected_qpu.submit(
                     IsingAQPU.convert_sequence_to_job(
                         seq_to_submit,

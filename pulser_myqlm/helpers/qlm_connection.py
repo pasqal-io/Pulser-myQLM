@@ -72,6 +72,7 @@ class QLMQPUServer:
 
     def submit(self, batch: Job) -> AsyncResultServer:
         """Submits a batch to the QPU. Creates an AsyncResultServer."""
+        # no backoff to have Jobs submitted once
         return AsyncResultServer(self.qpu.submit(batch))
 
     @backoff_decorator_qlm
@@ -85,14 +86,15 @@ class QLMServer:
 
     @staticmethod
     @backoff_decorator_qlm
-    def get_qpu_class(connection: QLMaaSConnection, qpu_id: str) -> QLMaaSQPU:
+    def _get_qpu_class(connection: QLMaaSConnection, qpu_id: str) -> QLMaaSQPU:
         """Returns a QLMaaSQPU associated with the qpu_id in a QLMaaSConnection."""
         return connection.get_qpu(qpu_id)
 
     @staticmethod
     def get_qpu(connection: QLMaaSConnection, qpu_id: str) -> QLMQPUServer:
-        """Returns a QLMaaSQPU associated with the qpu_id in a QLMaaSConnection."""
-        return QLMQPUServer(QLMServer.get_qpu_class(connection, qpu_id)())
+        """Returns a QLMQPUServer associated with the qpu_id in a QLMaaSConnection."""
+        # No backoff because only subject to init errors (get_qpu_class has backoff)
+        return QLMQPUServer(QLMServer._get_qpu_class(connection, qpu_id)())
 
     @staticmethod
     @backoff_decorator_qlm
