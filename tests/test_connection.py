@@ -212,7 +212,9 @@ def test_seq_submission():
             # async result needs connection
             return MockAsyncResult(job_id, mock_conn.qlm_client._connection)
 
-    mock_conn.qlm_client._connection.available_qpus["RemoteFresnelQPU"] = QLMaaSFresnelQPU
+    mock_conn.qlm_client._connection.available_qpus["RemoteFresnelQPU"] = (
+        QLMaaSFresnelQPU
+    )
     # Submitting a Sequence not built with a Device available on the Connection
     seq = pulser.Sequence(pulser.Register.square(2, 5, prefix="q"), pulser.AnalogDevice)
     # [Open Batches] No matter the Sequence, open batches are not supported

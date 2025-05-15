@@ -77,18 +77,20 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         timeout: int | None = None,
         **kwargs: dict[str, typing.Any],
     ) -> None:
-        self.qlm_client = QLMClient(qat.qlmaas.QLMaaSConnection(
-            hostname,
-            port,
-            authentication,
-            certificate,
-            key,
-            check_host,
-            proxy_host,
-            proxy_port,
-            timeout,
-            **kwargs,
-        ))
+        self.qlm_client = QLMClient(
+            qat.qlmaas.QLMaaSConnection(
+                hostname,
+                port,
+                authentication,
+                certificate,
+                key,
+                check_host,
+                proxy_host,
+                proxy_port,
+                timeout,
+                **kwargs,
+            )
+        )
 
     def supports_open_batch(self) -> bool:
         """Flag to confirm this class doesn't support open batch creation."""
@@ -210,9 +212,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             # A myQLM QPU associated with a Pasqal QPU has a serialized device
             # in the description of its specs
             try:
-                device = pulser.devices.Device.from_abstract_repr(
-                    qpu.get_description()
-                )
+                device = pulser.devices.Device.from_abstract_repr(qpu.get_description())
             except (TypeError, DeserializeDeviceError) as e:
                 # Go to the next QPU if no device was found
                 logger.debug(

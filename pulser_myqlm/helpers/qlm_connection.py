@@ -24,6 +24,7 @@ backoff_decorator_qlm = backoff.on_exception(
 
 # Wrapping is made for the purpose of retrying requests
 
+
 class AsyncResultWrapper:
     """Wraps an AsyncResult class."""
 
@@ -83,6 +84,7 @@ class QLMaaSQPUWrapper:
 
 
 class QLMClient:
+    """Client for QLM."""
 
     def __init__(self, connection: QLMaaSConnection):
         self._connection = connection
