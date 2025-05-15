@@ -11,7 +11,7 @@ from pulser.backend.remote import BatchStatus, JobStatus
 from pulser.exceptions.serialization import DeserializeDeviceError
 
 from pulser_myqlm.helpers.deserialize_other import deserialize_other
-from pulser_myqlm.helpers.qlm_connection import QLMServer
+from pulser_myqlm.helpers.qlm_connection import QLMClient
 from pulser_myqlm.ising_aqpu import IsingAQPU
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         timeout: int | None = None,
         **kwargs: dict[str, typing.Any],
     ) -> None:
-        self._connection = qat.qlmaas.QLMaaSConnection(
+        self.qlm_client = QLMClient(qat.qlmaas.QLMaaSConnection(
             hostname,
             port,
             authentication,
@@ -88,7 +88,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             proxy_port,
             timeout,
             **kwargs,
-        )
+        ))
 
     def supports_open_batch(self) -> bool:
         """Flag to confirm this class doesn't support open batch creation."""
@@ -123,7 +123,6 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
     ) -> pulser.backend.remote.RemoteResults:
         """Submits the sequence for execution on a remote Pasqal backend."""
         if open:
-            assert not self.supports_open_batch()
             raise NotImplementedError(
                 "Open batches are not implemented in Qaptiva Access."
             )
@@ -161,7 +160,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         # Check JobParams
         pulser.QPUBackend.validate_job_params(job_params, device.max_runs)
         # Instantiate the targeted QPU
-        connected_qpu = QLMServer.get_qpu(self._connection, qpu_id)
+        connected_qpu = self.qlm_client.get_qpu(qpu_id)
         # Submit one myQLM Job per job params
         results = []
         for params in job_params:
@@ -188,19 +187,19 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                 res.join()
         job_ids = [res.get_id() for res in results]
         return pulser.backend.remote.RemoteResults(
-            PulserQLMConnection._batch_id_from_job_ids(job_ids), self, job_ids
+            self._batch_id_from_job_ids(job_ids), self, job_ids
         )
 
     def fetch_available_devices(self) -> dict[str, pulser.devices.Device]:
         """Fetches the devices available through this connection."""
         # Get all the myQLM QPUs available through the QLMaaSConnection
-        qpus_names = QLMServer.get_qpus(self._connection)  # list of names of qpus
+        qpus_names = self.qlm_client.list_qpu_names()
         devices = {}
         for qpu_name in qpus_names:
             # Instantiate the QPU
             # A myQLM QPU associated with a Pasqal QPU doesn't take any args
             try:
-                qpu_server = QLMServer.get_qpu(self._connection, qpu_name)
+                qpu = self.qlm_client.get_qpu(qpu_name)
             except (RuntimeError, TypeError):
                 logger.debug(
                     f"QLMaaSQPU {qpu_name} does not contain a Device (can't be "
@@ -212,7 +211,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             # in the description of its specs
             try:
                 device = pulser.devices.Device.from_abstract_repr(
-                    qpu_server.get_description()
+                    qpu.get_description()
                 )
             except (TypeError, DeserializeDeviceError) as e:
                 # Go to the next QPU if no device was found
@@ -267,20 +266,20 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         )
         for job_id in job_ids:
             # Query the AsyncResult associated to each Job
-            async_res = QLMServer.get_job(self._connection, job_id)
+            async_res = self.qlm_client.get_job(job_id)
             # Link the status of the Job to a pulser JobStatus
             qlm_status = async_res.get_status()
-            status = PulserQLMConnection._convert_qlm_status_to_pulser_job(qlm_status)
+            status = self._convert_qlm_status_to_pulser_job(qlm_status)
             if status != JobStatus.DONE:
                 # The result of a not DONE Job is None
                 progress_results[job_id] = (status, None)
                 continue
-            qlm_job = async_res.get_batch()
-            # If the Job is DONE, fetch its myqlm Result
+            # The Job is DONE, fetch its myqlm Result
             result = async_res.get_result()
             # and make a pulser SampledResult, that needs the qubit ids and meas basis
             # that are in the submitted Sequence, that is in Job.schedule._other
             # Extract the Sequence in Job.schedule._other using deserialize_other
+            qlm_job = async_res.get_batch()
             if qlm_job.schedule is None:
                 raise pulser.backend.remote.RemoteResultsError(
                     f"The Job {job_id} does not have a schedule: "
@@ -335,18 +334,18 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         """Cancels a batch using its ID."""
         job_ids = self._get_job_ids(batch_id)
         for job_id in job_ids:
-            QLMServer.get_job(self._connection, job_id).cancel()
+            self.qlm_client.get_job(job_id).cancel()
 
     def delete_batch(self, batch_id: str) -> None:
         """Deletes the files of a batch using its ID."""
         job_ids = self._get_job_ids(batch_id)
         for job_id in job_ids:
-            QLMServer.get_job(self._connection, job_id).delete_files()
+            self.qlm_client.get_job(job_id).delete_files()
 
     def get_batch(self, batch_id: str) -> qat.core.Batch:
         """Returns a Batch associated with a batch_id."""
         job_ids = self._get_job_ids(batch_id)
         jobs = []
         for job_id in job_ids:
-            jobs.append(QLMServer.get_job(self._connection, job_id).get_batch())
+            jobs.append(self.qlm_client.get_job(job_id).get_batch())
         return qat.core.Batch(jobs=jobs)

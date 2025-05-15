@@ -198,21 +198,21 @@ def test_seq_submission():
             super().__init__(port=FRESNEL_PORT, ip="localhost")
 
         def submit(self, batch: Job, raise_err: bool = True) -> AsyncResult:
-            job_id = mock_conn._connection._get_next_job_id()
-            mock_conn._connection.add_job(job_id, batch)
-            mock_conn._connection.run_job(job_id)
+            job_id = mock_conn.qlm_client._connection._get_next_job_id()
+            mock_conn.qlm_client._connection.add_job(job_id, batch)
+            mock_conn.qlm_client._connection.run_job(job_id)
             try:
                 res = super().submit(batch)
             except Exception as e:
-                mock_conn._connection.set_job_as_error(job_id)
+                mock_conn.qlm_client._connection.set_job_as_error(job_id)
                 if raise_err:
                     raise e
-                return MockAsyncResult(job_id, mock_conn._connection)
-            mock_conn._connection.associate_result_to_job(job_id, res)
+                return MockAsyncResult(job_id, mock_conn.qlm_client._connection)
+            mock_conn.qlm_client._connection.associate_result_to_job(job_id, res)
             # async result needs connection
-            return MockAsyncResult(job_id, mock_conn._connection)
+            return MockAsyncResult(job_id, mock_conn.qlm_client._connection)
 
-    mock_conn._connection.available_qpus["RemoteFresnelQPU"] = QLMaaSFresnelQPU
+    mock_conn.qlm_client._connection.available_qpus["RemoteFresnelQPU"] = QLMaaSFresnelQPU
     # Submitting a Sequence not built with a Device available on the Connection
     seq = pulser.Sequence(pulser.Register.square(2, 5, prefix="q"), pulser.AnalogDevice)
     # [Open Batches] No matter the Sequence, open batches are not supported
@@ -320,7 +320,7 @@ def test_seq_submission():
         res = mock_conn.submit(seq, job_params=[job_params])
     # Adding a pulse to the Sequence
     seq.add(pulser.Pulse.ConstantPulse(1000, np.pi, 0, 0), "rydberg_global")
-    job_id = mock_conn._connection._get_next_job_id()
+    job_id = mock_conn.qlm_client._connection._get_next_job_id()
     res = mock_conn.submit(seq, job_params=[job_params])
     assert res.batch_id == f"{job_id}"
     assert res.job_ids == [f"{job_id}"]
@@ -351,7 +351,7 @@ def test_seq_submission():
     with pytest.warns(UserWarning, match="No declared variables named: nonamp"):
         mock_conn.submit(seq, job_params=[job_params])
     # Submitting two jobs with the variable correctly defined
-    job_id = int(mock_conn._connection._get_next_job_id())
+    job_id = int(mock_conn.qlm_client._connection._get_next_job_id())
     job_params["variables"] = {"amp": np.pi}
     job_params_2 = JobParams(runs=200, variables={"amp": np.pi})
     res = mock_conn.submit(seq, job_params=[job_params, job_params_2], wait=True)
@@ -376,8 +376,8 @@ def test_result_fetching(circuit_job):
     server_thread.start()
     mock_conn = PulserQLMConnection()
     # Can't fetch result of a circuit job
-    mock_conn._connection.add_job("0", circuit_job)  # Job ID 0 is a circuit
-    mock_conn._connection.batchs["0"][2] = JobStatus.DONE  # Assume it ran
+    mock_conn.qlm_client._connection.add_job("0", circuit_job)  # Job ID 0 is a circuit
+    mock_conn.qlm_client._connection.batchs["0"][2] = JobStatus.DONE  # Assume it ran
 
     with pytest.raises(
         pulser.backend.remote.RemoteResultsError,
@@ -385,8 +385,8 @@ def test_result_fetching(circuit_job):
     ):
         mock_conn._query_job_progress("0")
     # Can't fetch result of a Job without a sequence
-    mock_conn._connection.add_job("1", Schedule(Observable(2)).to_job())
-    mock_conn._connection.batchs["1"][2] = JobStatus.DONE  # Assume it ran
+    mock_conn.qlm_client._connection.add_job("1", Schedule(Observable(2)).to_job())
+    mock_conn.qlm_client._connection.batchs["1"][2] = JobStatus.DONE  # Assume it ran
     with pytest.raises(
         pulser.backend.remote.RemoteResultsError,
         match="Failed at finding a Sequence in the schedule of Job 1.",
@@ -417,10 +417,10 @@ def test_batch_status():
     res1 = aqpu.submit(job1)
     res2 = aqpu.submit(job2)
     # Submit a batch 0|1
-    mock_conn._connection.add_job("0", job1)
-    mock_conn._connection.add_job("1", job2)
-    mock_conn._connection.batchs["0"][1] = res1
-    mock_conn._connection.batchs["1"][1] = res2
+    mock_conn.qlm_client._connection.add_job("0", job1)
+    mock_conn.qlm_client._connection.add_job("1", job2)
+    mock_conn.qlm_client._connection.batchs["0"][1] = res1
+    mock_conn.qlm_client._connection.batchs["1"][1] = res2
     assert [
         deserialize_other(job.schedule._other)["seq"].to_abstract_repr()
         for job in mock_conn.get_batch("0|1")
@@ -432,22 +432,22 @@ def test_batch_status():
         mock_conn._get_batch_status("0|1") == pulser.backend.remote.BatchStatus.PENDING
     )
     # If one is running -> batch is running
-    mock_conn._connection.batchs["0"][2] = JobStatus.RUNNING
+    mock_conn.qlm_client._connection.batchs["0"][2] = JobStatus.RUNNING
     assert (
         mock_conn._get_batch_status("0|1") == pulser.backend.remote.BatchStatus.RUNNING
     )
     # If one is done -> Pending until the other works
-    mock_conn._connection.batchs["0"][2] = JobStatus.DONE
+    mock_conn.qlm_client._connection.batchs["0"][2] = JobStatus.DONE
     assert (
         mock_conn._get_batch_status("0|1") == pulser.backend.remote.BatchStatus.PENDING
     )
     # If one done + one stopped -> Batch is PAUSED
-    mock_conn._connection.batchs["1"][2] = JobStatus.STOPPED
+    mock_conn.qlm_client._connection.batchs["1"][2] = JobStatus.STOPPED
     assert (
         mock_conn._get_batch_status("0|1") == pulser.backend.remote.BatchStatus.PAUSED
     )
     # If one done + one failed -> Batch is in error
-    mock_conn._connection.batchs["1"][2] = JobStatus.FAILED
+    mock_conn.qlm_client._connection.batchs["1"][2] = JobStatus.FAILED
     assert mock_conn._get_batch_status("0|1") == pulser.backend.remote.BatchStatus.ERROR
     # Cancelling the batch
     mock_conn.cancel_batch("0|1")
@@ -455,13 +455,13 @@ def test_batch_status():
         mock_conn._get_batch_status("0|1") == pulser.backend.remote.BatchStatus.CANCELED
     )
     # Batch can be deleted
-    mock_conn._connection.batchs["0"][2] = JobStatus.DONE
-    mock_conn._connection.batchs["1"][2] = JobStatus.DONE
+    mock_conn.qlm_client._connection.batchs["0"][2] = JobStatus.DONE
+    mock_conn.qlm_client._connection.batchs["1"][2] = JobStatus.DONE
     mock_conn.delete_batch("0|1")
     assert (
         mock_conn._get_batch_status("0|1") == pulser.backend.remote.BatchStatus.CANCELED
     )
     # Unknown status raises an error
-    mock_conn._connection.batchs["1"][2] = "UNKNOWN_STATUS"
+    mock_conn.qlm_client._connection.batchs["1"][2] = "UNKNOWN_STATUS"
     with pytest.raises(ValueError, match="Unknown Job status UNKNOWN_STATUS."):
         mock_conn._get_batch_status("0|1")

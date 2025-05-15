@@ -22,8 +22,9 @@ backoff_decorator_qlm = backoff.on_exception(
     logger=LOGGER,
 )
 
+# Wrapping is made for the purpose of retrying requests
 
-class AsyncResultServer:
+class AsyncResultWrapper:
     """Wraps an AsyncResult class."""
 
     def __init__(self, result: AsyncResult) -> None:
@@ -64,16 +65,16 @@ class AsyncResultServer:
         self.result.cancel()
 
 
-class QLMQPUServer:
+class QLMaaSQPUWrapper:
     """Wraps a QLMaaSQPU (a manager of a RemoteQPU)."""
 
-    def __init__(self, qpu: QLMaaSQPU):
+    def __init__(self, qpu: QLMaaSQPU) -> None:
         self.qpu: QLMaaSQPU = qpu
 
-    def submit(self, batch: Job) -> AsyncResultServer:
-        """Submits a batch to the QPU. Creates an AsyncResultServer."""
+    def submit(self, batch: Job) -> AsyncResultWrapper:
+        """Submits a batch to the QPU. Creates an AsyncResultWrapper."""
         # no backoff to have Jobs submitted once
-        return AsyncResultServer(self.qpu.submit(batch))
+        return AsyncResultWrapper(self.qpu.submit(batch))
 
     @backoff_decorator_qlm
     def get_description(self) -> str:
@@ -81,29 +82,26 @@ class QLMQPUServer:
         return cast(str, self.qpu.get_specs().description)
 
 
-class QLMServer:
-    """Static methods to call the QPU API."""
+class QLMClient:
 
-    @staticmethod
+    def __init__(self, connection: QLMaaSConnection):
+        self._connection = connection
+
     @backoff_decorator_qlm
-    def _get_qpu_class(connection: QLMaaSConnection, qpu_id: str) -> QLMaaSQPU:
+    def _get_qpu_class(self, qpu_id: str) -> QLMaaSQPU:
         """Returns a QLMaaSQPU associated with the qpu_id in a QLMaaSConnection."""
-        return connection.get_qpu(qpu_id)
+        return self._connection.get_qpu(qpu_id)
 
-    @staticmethod
-    def get_qpu(connection: QLMaaSConnection, qpu_id: str) -> QLMQPUServer:
+    def get_qpu(self, qpu_id: str) -> QLMaaSQPUWrapper:
         """Returns a QLMQPUServer associated with the qpu_id in a QLMaaSConnection."""
         # No backoff because only subject to init errors (get_qpu_class has backoff)
-        return QLMQPUServer(QLMServer._get_qpu_class(connection, qpu_id)())
+        return QLMaaSQPUWrapper(self._get_qpu_class(qpu_id)())
 
-    @staticmethod
     @backoff_decorator_qlm
-    def get_qpus(connection: QLMaaSConnection) -> list[str]:
+    def list_qpu_names(self) -> list[str]:
         """Returns the names of the qpus available in the QLMaaSconnection."""
-        qpus_service_descr = connection.get_qpus()
-        return [qpu.name for qpu in qpus_service_descr]
+        return [qpu.name for qpu in self._connection.get_qpus()]
 
-    @staticmethod
-    def get_job(connection: QLMaaSConnection, job_id: str) -> AsyncResultServer:
-        """Gets the AsyncResultServer associated with a job_id in the connection."""
-        return AsyncResultServer(connection.get_job(job_id))
+    def get_job(self, job_id: str) -> AsyncResultWrapper:
+        """Gets the AsyncResultWrapper associated with a job_id in the connection."""
+        return AsyncResultWrapper(self._connection.get_job(job_id))
