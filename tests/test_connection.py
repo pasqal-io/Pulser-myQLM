@@ -322,6 +322,7 @@ def test_seq_submission():
     # Adding a pulse to the Sequence
     seq.add(pulser.Pulse.ConstantPulse(1000, np.pi, 0, 0), "rydberg_global")
     job_id = mock_conn.qlmaas_connection._get_next_job_id()
+    np.random.seed(111)
     res = mock_conn.submit(seq, job_params=[job_params])
     assert res.batch_id == f"{job_id}"
     assert res.job_ids == [f"{job_id}"]
@@ -355,6 +356,7 @@ def test_seq_submission():
     job_id = int(mock_conn.qlmaas_connection._get_next_job_id())
     job_params["variables"] = {"amp": np.pi}
     job_params_2 = JobParams(runs=200, variables={"amp": np.pi})
+    np.random.seed(111)
     res = mock_conn.submit(seq, job_params=[job_params, job_params_2], wait=True)
     assert res.batch_id == f"{job_id}|{job_id+1}"
     assert res.job_ids == [f"{job_id}", f"{job_id+1}"]
