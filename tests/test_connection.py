@@ -14,7 +14,7 @@ import pytest
 from pulser.backend.remote import JobParams
 from qat.comm.exceptions.ttypes import QPUException
 from qat.comm.qlmaas.ttypes import JobInfo, JobStatus
-from qat.core import Job, Observable, Result, Schedule
+from qat.core import Batch, Job, Observable, Result, Schedule
 from qat.qlmaas import QLMaaSConnection
 from qat.qlmaas.result import AsyncResult
 from qat.qlmaas.wrappers import ServiceDescription
@@ -188,6 +188,7 @@ def test_seq_submission():
     server_thread.daemon = True
     server_thread.start()
     mock_conn = PulserQLMConnection()
+    assert not mock_conn.supports_open_batch()
 
     # To check job submission, QPU should return an AsyncResult
     class QLMaaSFresnelQPU(RemoteQPU):
@@ -365,10 +366,14 @@ def test_seq_submission():
     assert res.get_available_results()[f"{job_id+1}"].bitstring_counts == {
         "0000": job_params_2["runs"]
     }
+    seq.measure()
+    assert mock_conn.get_sequence(f"{job_id}").to_abstract_repr() == seq.build(
+        amp=job_params["variables"]["amp"]
+    ).to_abstract_repr()
 
 
 @mock.patch("pulser_myqlm.connection.qat.qlmaas.QLMaaSConnection", MockQLMaaSConnection)
-def test_result_fetching(circuit_job):
+def test_result_fetching(circuit_job, schedule_seq):
     global FRESNEL_PORT
     FRESNEL_PORT += 1
     server_thread = Thread(target=deploy_qpu, args=(FresnelQPU(None), FRESNEL_PORT))
@@ -392,6 +397,23 @@ def test_result_fetching(circuit_job):
         match="Failed at finding a Sequence in the schedule of Job 1.",
     ):
         mock_conn._query_job_progress("1")
+    # Can't fetch result of a Batch
+    _, seq = schedule_seq
+    job = IsingAQPU.convert_sequence_to_job(seq)
+    mock_conn.qlmaas_connection.add_job("2", Batch([job, job]))
+    mock_conn.qlmaas_connection.batchs["2"][2] = JobStatus.DONE  # Assume it ran
+
+    with pytest.raises(
+        pulser.backend.remote.RemoteResultsError,
+        match="The Job 2 isn't a Job or a Batch with a single Job.",
+    ):
+        mock_conn._query_job_progress("2")
+    # Can fetch result of a Batch with a single Job
+    _, seq = schedule_seq
+    job = IsingAQPU.convert_sequence_to_job(seq)
+    mock_conn.qlmaas_connection.add_job("3", Batch([job]))
+    mock_conn.qlmaas_connection.batchs["3"][2] = JobStatus.DONE  # Assume it ran
+    assert mock_conn.get_sequence("3").to_abstract_repr() == seq.to_abstract_repr()
 
 
 @mock.patch("pulser_myqlm.connection.qat.qlmaas.QLMaaSConnection", MockQLMaaSConnection)

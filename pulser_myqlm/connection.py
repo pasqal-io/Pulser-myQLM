@@ -278,21 +278,8 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             # The Job is DONE, fetch its myqlm Result
             result = async_res.get_result()
             # and make a pulser SampledResult, that needs the qubit ids and meas basis
-            # that are in the submitted Sequence, that is in Job.schedule._other
-            # Extract the Sequence in Job.schedule._other using deserialize_other
-            qlm_job = async_res.get_batch()
-            if qlm_job.schedule is None:
-                raise pulser.backend.remote.RemoteResultsError(
-                    f"The Job {job_id} does not have a schedule: "
-                    "it can't have run on the QPU.",
-                )
-            try:
-                other_dict = deserialize_other(qlm_job.schedule._other)
-            except ValueError as e:
-                raise pulser.backend.remote.RemoteResultsError(
-                    f"Failed at finding a Sequence in the schedule of Job {job_id}.",
-                ) from e
-            seq = other_dict["seq"]  # the submitted Sequence
+            # that are in the submitted Sequence.
+            seq = self.get_sequence(job_id)
             # Create a SampledResult with qubit ids, meas basis of seq, result of Job
             progress_results[job_id] = (
                 status,
@@ -350,3 +337,30 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         for job_id in job_ids:
             jobs.append(self._qlm_client.get_job(job_id).get_batch())
         return qat.core.Batch(jobs=jobs)
+
+    def get_sequence(self, job_id: str) -> pulser.Sequence:
+        """Returns the Sequence associated with a job_id in the QLMaaSConnection."""
+        # Fetch the job associated with the ID
+        qlm_job = self._qlm_client.get_job(job_id).get_batch()
+        # Extract the Sequence in Job.schedule._other using deserialize_other
+        # A Batch with a single Job can be casted to a Job
+        if isinstance(qlm_job, qat.core.Batch) and len(qlm_job.jobs) == 1:
+            qlm_job = qlm_job.jobs[0]
+        # Can't work with something different from a Job
+        if not isinstance(qlm_job, qat.core.Job):
+            raise pulser.backend.remote.RemoteResultsError(
+                f"The Job {job_id} isn't a Job or a Batch with a single Job."
+            )
+        # Can't work with a Job not having a Schedule
+        if qlm_job.schedule is None:
+            raise pulser.backend.remote.RemoteResultsError(
+                f"The Job {job_id} does not have a schedule: "
+                "it can't have run on the QPU.",
+            )
+        try:
+            other_dict = deserialize_other(qlm_job.schedule._other)
+        except ValueError as e:
+            raise pulser.backend.remote.RemoteResultsError(
+                f"Failed at finding a Sequence in the schedule of Job {job_id}.",
+            ) from e
+        return typing.cast(pulser.Sequence, other_dict["seq"])  # the submitted Sequence
