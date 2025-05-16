@@ -363,13 +363,12 @@ class IsingAQPU(QPUHandler):
                     f"State {sample.state} is incompatible with number of qubits"
                     f" declared {n_qubits}."
                 )
-            counts = sample.probability * n_samples
-            if not np.isclose(counts % 1, 0, rtol=1e-5):
-                raise ValueError(
-                    f"Probability associated with state {sample.state} does not "
-                    f"make an integer count for n_samples: {n_samples}."
-                )
-            samples[sample.state.bitstring.zfill(n_qubits)] = int(counts)
+            # Going from counts to probability = counts/n_samples back to counts
+            # causes issues with float. We assume the obtained counts is close to
+            # an integer
+            samples[sample.state.bitstring.zfill(n_qubits)] = round(
+                sample.probability * n_samples
+            )
         return Counter(samples)
 
     def submit(self, batch: Batch) -> BatchResult:
