@@ -367,9 +367,10 @@ def test_seq_submission():
         "0000": job_params_2["runs"]
     }
     seq.measure()
-    assert mock_conn.get_sequence(f"{job_id}").to_abstract_repr() == seq.build(
-        amp=job_params["variables"]["amp"]
-    ).to_abstract_repr()
+    assert (
+        mock_conn.get_sequence(f"{job_id}").to_abstract_repr()
+        == seq.build(amp=job_params["variables"]["amp"]).to_abstract_repr()
+    )
 
 
 @mock.patch("pulser_myqlm.connection.qat.qlmaas.QLMaaSConnection", MockQLMaaSConnection)
