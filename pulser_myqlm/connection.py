@@ -58,10 +58,6 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
 
     Keyword Arguments:
         All the other parameters to initialize a qat.qlmaas.QLMaaSConnection.
-
-    Attribute:
-        _connection: The QLMaaSConnection instantiated with the keyword
-            arguments.
     """
 
     def __init__(
@@ -77,7 +73,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         timeout: int | None = None,
         **kwargs: dict[str, typing.Any],
     ) -> None:
-        self.qlm_client = QLMClient(
+        self._qlm_client = QLMClient(
             qat.qlmaas.QLMaaSConnection(
                 hostname,
                 port,
@@ -91,6 +87,11 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                 **kwargs,
             )
         )
+
+    @property
+    def qlmaas_connection(self) -> qat.qlmaas.QLMaaSConnection:
+        """The QLMaaSConnection used."""
+        return self._qlm_client._connection
 
     def supports_open_batch(self) -> bool:
         """Flag to confirm this class doesn't support open batch creation."""
@@ -162,7 +163,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         # Check JobParams
         pulser.QPUBackend.validate_job_params(job_params, device.max_runs)
         # Instantiate the targeted QPU
-        connected_qpu = self.qlm_client.get_qpu(qpu_id)
+        connected_qpu = self._qlm_client.get_qpu(qpu_id)
         # Submit one myQLM Job per job params
         results = []
         for params in job_params:
@@ -195,13 +196,13 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
     def fetch_available_devices(self) -> dict[str, pulser.devices.Device]:
         """Fetches the devices available through this connection."""
         # Get all the myQLM QPUs available through the QLMaaSConnection
-        qpus_names = self.qlm_client.list_qpu_names()
+        qpus_names = self._qlm_client.list_qpu_names()
         devices = {}
         for qpu_name in qpus_names:
             # Instantiate the QPU
             # A myQLM QPU associated with a Pasqal QPU doesn't take any args
             try:
-                qpu = self.qlm_client.get_qpu(qpu_name)
+                qpu = self._qlm_client.get_qpu(qpu_name)
             except (RuntimeError, TypeError):
                 logger.debug(
                     f"QLMaaSQPU {qpu_name} does not contain a Device (can't be "
@@ -266,7 +267,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         )
         for job_id in job_ids:
             # Query the AsyncResult associated to each Job
-            async_res = self.qlm_client.get_job(job_id)
+            async_res = self._qlm_client.get_job(job_id)
             # Link the status of the Job to a pulser JobStatus
             qlm_status = async_res.get_status()
             status = self._convert_qlm_status_to_pulser_job(qlm_status)
@@ -334,18 +335,18 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         """Cancels a batch using its ID."""
         job_ids = self._get_job_ids(batch_id)
         for job_id in job_ids:
-            self.qlm_client.get_job(job_id).cancel()
+            self._qlm_client.get_job(job_id).cancel()
 
     def delete_batch(self, batch_id: str) -> None:
         """Deletes the files of a batch using its ID."""
         job_ids = self._get_job_ids(batch_id)
         for job_id in job_ids:
-            self.qlm_client.get_job(job_id).delete_files()
+            self._qlm_client.get_job(job_id).delete_files()
 
     def get_batch(self, batch_id: str) -> qat.core.Batch:
         """Returns a Batch associated with a batch_id."""
         job_ids = self._get_job_ids(batch_id)
         jobs = []
         for job_id in job_ids:
-            jobs.append(self.qlm_client.get_job(job_id).get_batch())
+            jobs.append(self._qlm_client.get_job(job_id).get_batch())
         return qat.core.Batch(jobs=jobs)
