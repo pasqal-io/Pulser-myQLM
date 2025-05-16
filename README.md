@@ -1,6 +1,6 @@
 # Pulser-MyQLM
 
-Pulser-MyQLM is an extension of Pulser and myqlm qat.core for the integration of the Pulser framework and Pasqal devices within the Atos MyQLM framework.
+Pulser-MyQLM is an extension of [Pulser](https://pulser.readthedocs.io/en/stable/index.html) and [myQLM](https://qlm.bull.com/bin/view/Main/) for the integration of the Pulser framework and Pasqal devices within the myQLM framework.
 
 ## Installation
 
@@ -32,6 +32,33 @@ If, among the development requirements, you only wish to install the test requir
 ```bash
 python setup.py install easy_install "pulser-myqlm[test_dev]"
 ```
+
+## Documentation
+
+Pulser-MyQLM enables to submit quantum programs written with Pulser to Pasqal's QPUs via a QLM. It then provides tools for users of the QLM to submit their quantum programs and simulate them, as well as tools for internal developpers to connect Pasqal QPUs with their QLM. All these features are documented with notebooks in the [tutorials folder](./tutorials/).
+
+### Submitting a Pulser Sequence to the QLM
+
+#### A Pulser Remote Connection to submit to the QPU
+
+Pulser is an open-source Python software package that provides libraries for designing and simulating pulse sequences that act on programmable arrays of neutral atoms. The quantum programs are then written with a Pulser `Sequence`.
+
+Sequences are submitted to remote QPUs using the [QPUBackend of Pulser](https://pulser.readthedocs.io/en/stable/tutorials/backends.html). This backend needs a remote connection to communicate with the QPU. Pulser-MyQLM provides a `QLMConnection` to communicate with the QPU, i.e, to submit Sequences, to find the available QPUs on a given QLM, etc. . See an example of the submission of a Sequence to a QPU via a `QLMConnection` in [this tutorial](./tutorials/Submitting%20AFM%20state%20prep%20to%20QPU.ipynb).
+
+
+#### Converting a Pulser Sequence into a MyQLM Job
+
+The QLM takes as input myQLM Jobs. An alternative approach to using the `QLMConnection` to submit `Sequences` to the QPU is to convert them into a `Job` using `IsingAQPU.convert_sequence_to_job`. An example is given in [this tutorial](./tutorials/Submitting%20AFM%20state%20prep%20to%20QPU.ipynb).
+
+The obtained Job is called ["Analog"](https://myqlm.github.io/02_user_guide/01_write/02_analog_schedule/03_an_jobs.html): it contains the time-dependent Hamiltonian associated with the Sequence. It can be simulated using the simulators of the QLM accepting analog jobs.
+
+A thorough presentation of the conversion of Sequence into a Job is presented in [this tutorial](./tutorials/pulser-myqlm.ipynb). The reverse conversion is not implemented, its limitations are presented in [this other tutorial](./tutorials/pulser_schedule_creation.ipynb).
+
+### Connecting a QPU with a QLM
+
+Internal developpers wanting to connect a Pasqal QPU with their QLM have to use a `RemoteQPU` in their QLM, connected to a `FresnelQPU`, itself connected to the QPU. 
+
+To ease the development, `pulser-myqlm` provides a python executable [fresnel_qpu_server.py](./fresnel_qpu_server.py), that takes as input the IP address of the QPU and its port, as well as the IP address and the port on which to create a `FresnelQPU` server. By using a `RemoteQPU` pointing to the IP address and the port of this server, any Sequence that will be submitted to this `RemoteQPU` will be executed on the QPU (see an example in [this tutorial](./tutorials/pulser-myqlm.ipynb)).
 
 ## Continuous Integration Requirements
 

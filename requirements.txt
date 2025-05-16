@@ -1,7 +1,7 @@
 numpy
 scipy
-pulser-core >= 0.20.0
-pulser-simulation>=0.14.0
+pulser-core >= 1.4.0
+pulser-simulation >= 1.4.0
 myqlm>=1.9.0, !=1.10.4
 requests
 backoff ~= 2.2 
