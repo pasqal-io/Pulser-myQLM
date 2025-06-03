@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from functools import cached_property
-from typing import Union, cast
+from typing import Union, cast, Optional
 
 import numpy as np
 from pulser import Sequence, sampler
@@ -371,22 +371,36 @@ class IsingAQPU(QPUHandler):
             )
         return Counter(samples)
 
-    def submit(self, batch: Batch) -> BatchResult:
+    def submit(self, batch: Batch, qpu_params: Optional[dict] = None) -> BatchResult:
         """Executes a batch of jobs and returns the corresponding list of Results.
 
         If the qpu attribute is None, pulser_simulation is used to simulate the Pulser
         Sequence associated with each MyQLM Job in the batch.
 
+        If `qpu` is an instance of `QLMaaSQPU`, the following arguments can be passed through
+        `qpu_params`:
+
+        - `meta_data` (dict, optional): override the meta_data of the batch
+        - `mem_usage` (int, optional): override default memory usage (in MB) calculation
+        - `core_usage` (int, optional): override default core usage calculation
+        - `nb_nodes` (int, optional): override default number of nodes
+
         Args:
             batch: a batch of jobs. If a single job is provided, the job is embedded
                 into a Batch, executed, and the first result is returned.
+            qpu_params: parameters to be passed to the `qpu.submit()`.
 
         Returns:
             A batch result.
         """
+
+        if qpu_params is None:
+            qpu_params = {}
+
         if self.qpu is None:
-            return super().submit(batch)
-        return self.qpu.submit(batch)
+            return super().submit(batch, **qpu_params)
+
+        return self.qpu.submit(batch, **qpu_params)
 
     def submit_job(self, job: Job) -> Result:
         """Simulate a MyQLM Job using pulser_simulation.
