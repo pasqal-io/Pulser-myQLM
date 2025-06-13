@@ -278,12 +278,8 @@ def test_seq_submission():
     assert fresnel_device.requires_layout
     with pytest.raises(QPUException, match="must be defined from a layout."):
         mock_conn.submit(seq, job_params=[job_params])
-    # [Register] Checked prior to submission with mimic_qpu
-    assert fresnel_device.requires_layout
-    with pytest.raises(
-        ValueError,
-        match="requires the sequence's register to be defined from a `RegisterLayout`",
-    ):
+    # [Sequence] Pulser rejects the Sequence because it's empty
+    with pytest.raises(ValueError, match="'sequence' should not be empty"):
         mock_conn.submit(seq, job_params=[job_params], mimic_qpu=True)
     # [Register] QPU requires a layout defined from calibrated layouts
     assert not fresnel_device.accepts_new_layouts
