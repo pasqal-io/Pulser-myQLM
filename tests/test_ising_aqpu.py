@@ -13,7 +13,7 @@ from pulser.devices.interaction_coefficients import c6_dict
 from pulser.waveforms import CustomWaveform
 from pulser_simulation import QutipEmulator
 from qat.comm.exceptions.ttypes import QPUException
-from qat.core import Job, Result, Sample, Schedule
+from qat.core import Batch, Job, Result, Sample, Schedule
 from qat.core.variables import ArithExpression, Symbol, cos, sin
 from qat.qpus import PyLinalg
 
@@ -535,6 +535,12 @@ def test_run_sequence_ising(schedule_seq, circuit_job):
     ]
     compare_results_raw_data(result.raw_data, exp_result)
     assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "001": 1}
+    # Run Batch of Jobs
+    np.random.seed(111)
+    result = aqpu.submit(Batch([job_from_seq]), meta_data={"name": "Dummy"})
+    result.meta_data == {"name": "Dummy"}
+    compare_results_raw_data(result[0].raw_data, exp_result)
+    assert IsingAQPU.convert_result_to_samples(result[0]) == {"000": 999, "001": 1}
     # Run job created from a sequence using convert_sequence_to_schedule
     schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
     job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
