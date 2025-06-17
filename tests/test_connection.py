@@ -274,17 +274,13 @@ def test_seq_submission():
         mock_conn.submit(
             seq, job_params=[JobParams(runs=fresnel_device.max_runs + 1, variables={})]
         )
+    # [Sequence] Checked prior to submission: Sequences can't be empty
+    with pytest.raises(ValueError, match="'sequence' should not be empty"):
+        mock_conn.submit(seq, job_params=[job_params], mimic_qpu=True)
     # [Register] QPU rejects the Sequence because it requires a layout
     assert fresnel_device.requires_layout
     with pytest.raises(QPUException, match="must be defined from a layout."):
         mock_conn.submit(seq, job_params=[job_params])
-    # [Register] Checked prior to submission with mimic_qpu
-    assert fresnel_device.requires_layout
-    with pytest.raises(
-        ValueError,
-        match="requires the sequence's register to be defined from a `RegisterLayout`",
-    ):
-        mock_conn.submit(seq, job_params=[job_params], mimic_qpu=True)
     # [Register] QPU requires a layout defined from calibrated layouts
     assert not fresnel_device.accepts_new_layouts
     square_layout = pulser.register.special_layouts.SquareLatticeLayout(4, 4, 5)
@@ -294,6 +290,30 @@ def test_seq_submission():
         QPUException, match="must be defined from one of the calibrated layouts"
     ):
         mock_conn.submit(seq, job_params=[job_params])
+    # [Register] Using a layout from calibrated layouts
+    seq._set_register(
+        seq,
+        fresnel_device.pre_calibrated_layouts[0].define_register(6, 9, 54, 51),
+    )
+    assert seq.register.layout in fresnel_device.pre_calibrated_layouts
+    # [Sequence] An empty sequence cannot run on the QPU
+    with pytest.raises(
+        QPUException, match="The Sequence should contain at least one Pulse"
+    ):
+        res = mock_conn.submit(seq, job_params=[job_params])
+    # Adding a pulse to the Sequence
+    seq.add(pulser.Pulse.ConstantPulse(1000, np.pi, 0, 0), "rydberg_global")
+    # [Register] Checked prior to submission: Sequence's register requires a layout
+    seq._set_register(seq, pulser.Register.square(2, 5, prefix="q"))
+    assert fresnel_device.requires_layout
+    with pytest.raises(
+        ValueError,
+        match="requires the sequence's register to be defined from a `RegisterLayout`",
+    ):
+        mock_conn.submit(seq, job_params=[job_params], mimic_qpu=True)
+    # [Register] Checked prior to submission: Layout must be among calibrated layouts
+    assert not fresnel_device.accepts_new_layouts
+    seq._set_register(seq, square_layout.define_register(0, 1, 4, 5))
     # [Register] also checked prior to submission to the QPU
     with pytest.raises(
         ValueError, match="the register's layout must be one of the layouts available"
@@ -314,13 +334,6 @@ def test_seq_submission():
             job_params=[JobParams(runs=fresnel_device.max_runs + 1, variables={})],
             mimic_qpu=True,
         )
-    # [Sequence] An empty sequence cannot run on the QPU
-    with pytest.raises(
-        QPUException, match="The Sequence should contain at least one Pulse"
-    ):
-        res = mock_conn.submit(seq, job_params=[job_params])
-    # Adding a pulse to the Sequence
-    seq.add(pulser.Pulse.ConstantPulse(1000, np.pi, 0, 0), "rydberg_global")
     job_id = mock_conn.qlmaas_connection._get_next_job_id()
     np.random.seed(111)
     res = mock_conn.submit(seq, job_params=[job_params])
