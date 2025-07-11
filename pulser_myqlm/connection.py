@@ -203,7 +203,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             # A myQLM QPU associated with a Pasqal QPU doesn't take any args
             try:
                 qpu = self._qlm_client.get_qpu(qpu_name)
-            except (RuntimeError, TypeError):
+            except Exception:
                 logger.debug(
                     f"QLMaaSQPU {qpu_name} does not contain a Device (can't be "
                     "initialized without providing arguments)."
