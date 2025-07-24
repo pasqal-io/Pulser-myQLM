@@ -736,13 +736,10 @@ def test_device_fetching_job_polling_errors(
     if remote_fresnel:
         starting_successes += [mocked_requests_get_success] * 2
     # If QPU returns 400 error or a non-HTTP non-Connection Error
-    for i, mocked_requests_get in enumerate(
-        [
-            mocked_requests_get_400_exception,
-            mocked_requests_raises_timeout_error,
-        ]
-    ):
-        print(i)
+    for mocked_requests_get in [
+        mocked_requests_get_400_exception,
+        mocked_requests_raises_timeout_error,
+    ]:
         # Can't connect to it
         mock_get.side_effect = mocked_requests_get
         with pytest.raises(
