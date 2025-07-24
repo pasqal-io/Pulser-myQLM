@@ -64,19 +64,23 @@ class FresnelQPU(QPUHandler):
         return None if self._qpu_client is None else self._qpu_client.base_uri
 
     @property
-    def is_operational(self) -> bool:
-        """Returns whether or not the system is operational."""
+    def operational_status(self) -> str:
+        """Returns the operational status of the system."""
         if self._qpu_client is None:
-            return True
+            return "UP"
         try:
-            operational_status = self._qpu_client.get_operational_status()
+            return self._qpu_client.get_operational_status()
         except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.ABORT,
                 message="Connection with API failed, make sure the address "
                 f"{self.base_uri} is correct. Got error: {repr(e)}",
             )
-        return operational_status == "UP"
+
+    @property
+    def is_operational(self) -> bool:
+        """Returns whether or not the system is operational."""
+        return self.operational_status == "UP"
 
     @property
     def _deserialized_device(self) -> str:
@@ -107,7 +111,10 @@ class FresnelQPU(QPUHandler):
         of the HardwareSpecs. The Pulser Device can be obtained by using
         'pulser.json.abstract_repr.deserializer.deserialize_device'.
         """
-        return HardwareSpecs(description=self._deserialized_device)
+        return HardwareSpecs(
+            description=self._deserialized_device,
+            meta_data={"operational_status": self.operational_status},
+        )
 
     def _poll_system(self) -> None:
         """Polls QPU until it is operational."""
