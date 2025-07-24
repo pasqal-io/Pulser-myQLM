@@ -12,6 +12,7 @@ from pulser_myqlm import IsingAQPU, FresnelQPU
 PORT = 1234
 IP = "127.0.0.1"  # TODO: Modify this IP
 QPU = FresnelQPU(f"http://{IP}:{PORT}/api", version="v1")
+print("qpu status:", QPU.is_operational)
 
 # Get the Device implemented by the QPU from the QPU specs
 FRESNEL_DEVICE = Device.from_abstract_repr(QPU.get_specs().description)

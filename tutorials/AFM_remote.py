@@ -18,6 +18,7 @@ FRESNEL_DEVICE = Device.from_abstract_repr(QPU.get_specs().description)
 print("Using the Device:", "\n")
 FRESNEL_DEVICE.print_specs()
 
+print(QPU.get_specs().meta_data)
 # Simulation parameters
 NBSHOTS = 0  # must be 0 for AnalogQPU
 MODULATION = False  # Whether or not to use Modulated Sequence in the simulation
