@@ -60,6 +60,15 @@ Internal developpers wanting to connect a Pasqal QPU with their QLM have to use 
 
 To ease the development, `pulser-myqlm` provides a python executable [fresnel_qpu_server.py](./fresnel_qpu_server.py), that takes as input the IP address of the QPU and its port, as well as the IP address and the port on which to create a `FresnelQPU` server. By using a `RemoteQPU` pointing to the IP address and the port of this server, any Sequence that will be submitted to this `RemoteQPU` will be executed on the QPU (see an example in [this tutorial](./tutorials/pulser-myqlm.ipynb)).
 
+## Testing
+
+Unitary tests are developed in the ./tests folder.
+Non-regression tests are provided in the ./tutorials folder as python scripts. Here is how to check the correct deloyment of a QPU in a Qaptiva Stack using pulser-myqlm:
+- AFM_direct.py: Assume you have a QPU installed accessible at a given IP and PORT. Use this script to submit a Sequence preparing an AFM state.
+- AFM_remote.py: Assume you have deployed a FresnelQPU server, that is able to submit myQLM Jobs to the QPU, at a given IP and port (for instance, using `fresnel_qpu_server.py`). Specify the IP and port of this server in this script to submit a Sequence preparing an AFM state.
+- AFM_qaptiva.py: Assume you have installed in your Qaptiva a QLMaaSQPU named PasqalQPU, that is connected with the QPU (either via a FresnelQPU or via a RemoteQPU connected to a FresnelQPU server for instance). Use this script to submit a Sequence preparing an AFM state to the QPU.
+- AFM_PulserQLMConnection.py: Assume the same installation as in the AFM_qaptiva.py. Test the correct submission of a Pulser Sequence preparing an AFM state to the QPU, using the PulserQLMConnection. 
+
 ## Continuous Integration Requirements
 
 We enforce some continuous integration standards. Make sure you follow them, otherwise your pull requests will be blocked until you fix them. To check if your changes pass all CI tests before you make the PR, you'll need additional packages, which you can install by running
