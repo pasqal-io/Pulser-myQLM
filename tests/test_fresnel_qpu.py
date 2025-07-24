@@ -374,6 +374,7 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
     )
     specs = qpu.get_specs()
     assert (device := deserialize_device(specs.description)) == TEMP_DEVICE
+    assert specs.meta_data["operational_status"] == "UP"
     # Can't simulate if Register is not defined from a layout
     assert device.requires_layout  # if QPU's device requires a layout
     seq = Sequence(Register.triangular_lattice(2, 2, spacing=5), device)
@@ -552,9 +553,12 @@ def test_non_operational_qpu(
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
 
     # Device is returned even if QPU is non-operational
-    mock_get.side_effect = SideEffect(mocked_requests_get_non_operational)
+    mock_get.side_effect = SideEffect(
+        mocked_requests_get_non_operational, mocked_requests_get_non_operational
+    )
     specs = qpu.get_specs()
     assert deserialize_device(specs.description) == TEMP_DEVICE
+    assert specs.meta_data["operational_status"] == ("DOWN" if base_uri else "UP")
     # Set response to non operational for first polling attempt
     # Set response to success in second polling attempt
     # Set response to success for querying results
@@ -677,9 +681,9 @@ def test_job_polling_success(_, mock_get, remote_fresnel, schedule_seq):
     qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-    successes = [mocked_requests_get_success for _ in range(3)]
+    successes = [mocked_requests_get_success for _ in range(4)]
     if remote_fresnel:
-        successes.append(mocked_requests_get_success)
+        successes += [mocked_requests_get_success] * 2
     qpu_behaviour = successes + polling_behaviour
     mock_get.side_effect = SideEffect(*qpu_behaviour)
     np.random.seed(111)
@@ -716,6 +720,7 @@ def test_device_fetching_job_polling_errors(
     # Can't poll if FresnelQPU is not connected to a base_uri
     if base_uri is None:
         assert deserialize_device(qpu.get_specs().description) == TEMP_DEVICE
+        assert qpu.get_specs().meta_data["operational_status"] == "UP"
         with pytest.raises(
             QPUException, match="Results are only available if base_uri is defined"
         ):
@@ -727,14 +732,17 @@ def test_device_fetching_job_polling_errors(
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
     successes = [mocked_requests_get_success for _ in range(2)]
-    starting_successes = successes + [mocked_requests_get_success]
+    starting_successes = successes + [mocked_requests_get_success] * 2
     if remote_fresnel:
-        starting_successes.append(mocked_requests_get_success)
+        starting_successes += [mocked_requests_get_success] * 2
     # If QPU returns 400 error or a non-HTTP non-Connection Error
-    for mocked_requests_get in [
-        mocked_requests_get_400_exception,
-        mocked_requests_raises_timeout_error,
-    ]:
+    for i, mocked_requests_get in enumerate(
+        [
+            mocked_requests_get_400_exception,
+            mocked_requests_raises_timeout_error,
+        ]
+    ):
+        print(i)
         # Can't connect to it
         mock_get.side_effect = mocked_requests_get
         with pytest.raises(
@@ -807,3 +815,4 @@ def test_device_fetching_job_polling_errors(
     # But can get its specs
     mock_get.side_effect = mocked_requests_get_error
     assert deserialize_device(qpu.get_specs().description) == TEMP_DEVICE
+    assert qpu.get_specs().meta_data["operational_status"] == "UP"
