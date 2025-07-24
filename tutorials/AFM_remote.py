@@ -2,23 +2,23 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pulser import Pulse, Sequence
+from pulser import Pulse, Sequence, InterpolatedWaveform
 from pulser.devices import Device
 from pulser.waveforms import RampWaveform
 from qat.qpus import RemoteQPU
 
-from pulser_myqlm import FresnelQPU, IsingAQPU
+from pulser_myqlm import IsingAQPU
 
 # Connect to the QPU
 PORT = 1234
-IP = ""  # TODO: Modify this IP
+IP = "127.0.0.1"  # TODO: Modify this IP
 QPU = RemoteQPU(PORT, IP)
 
-# Get the device of the QPU
-# TODO: Implement it with get_specs
-FRESNEL_QPU = FresnelQPU(None)  # mimics QPU with pulser-simulation as backend
 # Get the Device implemented by the QPU from the QPU specs
-FRESNEL_DEVICE = Device.from_abstract_repr(FRESNEL_QPU.get_specs().description)
+FRESNEL_DEVICE = Device.from_abstract_repr(QPU.get_specs().description)
+print("Using the Device:", "\n")
+FRESNEL_DEVICE.print_specs()
+
 # Simulation parameters
 NBSHOTS = 0  # must be 0 for AnalogQPU
 MODULATION = False  # Whether or not to use Modulated Sequence in the simulation
@@ -26,35 +26,38 @@ MODULATION = False  # Whether or not to use Modulated Sequence in the simulation
 reg_layout = FRESNEL_DEVICE.calibrated_register_layouts[
     "TriangularLatticeLayout(61, 5.0µm)"
 ]
-Omega_max = 2 * FRESNEL_DEVICE.rabi_from_blockade(10.0)  # Spacing between atoms
+Omega_max = 0.9 * 2 * FRESNEL_DEVICE.rabi_from_blockade(5.0)  # Spacing between atoms
 
 U = Omega_max / 2.0
 
-delta_0 = -6 * U
-delta_f = 2 * U
+T = 2  # us
+params = [T] + (
+    U * np.array([0.16768532, 0.2, 0.2, -1.0, -0.54656236, 0.05762063, 0.3673201, 1.0])
+).tolist()
 
-t_rise = 2500
-t_fall = 5000
-t_sweep = (delta_f - delta_0) / (2 * np.pi) * 1000
+interpolated_pulse = Pulse(
+    InterpolatedWaveform(
+        T * 1000,
+        U * np.array([1e-9, 0.16768532, 0.2, 0.2, 1e-9]),
+        times=np.linspace(0, 1, 5),
+    ),
+    InterpolatedWaveform(
+        T * 1000,
+        U * np.array([-1.0, -0.54656236, 0.05762063, 0.3673201, 1.0]),
+        times=np.linspace(0, 1, 5),
+    ),
+    0,
+)
 
-R_interatomic = FRESNEL_DEVICE.rydberg_blockade_radius(U)
-
-reg = reg_layout.define_register(22, 40, 48, 38, 20, 12)
+reg = reg_layout.define_register(21, 26, 35, 39, 34, 25)
 N_atoms = len(reg.qubits)
 print("Contains ", N_atoms, "atoms")
-print(f"Interatomic Radius is: {R_interatomic}µm.")
-
-rise = Pulse.ConstantDetuning(RampWaveform(t_rise, 0.0, Omega_max), delta_0, 0.0)
-sweep = Pulse.ConstantAmplitude(Omega_max, RampWaveform(t_sweep, delta_0, delta_f), 0.0)
-fall = Pulse.ConstantDetuning(RampWaveform(t_fall, Omega_max, 0.0), delta_f, 0.0)
 
 # Creating the Sequence
 seq = Sequence(reg, FRESNEL_DEVICE)
 seq.declare_channel("ising", "rydberg_global")
 
-seq.add(rise, "ising")
-seq.add(sweep, "ising")
-seq.add(fall, "ising")
+seq.add(interpolated_pulse, "ising")
 
 # Simulate the Sequence on the QPU
 job = IsingAQPU.convert_sequence_to_job(seq, nbshots=NBSHOTS, modulation=MODULATION)
