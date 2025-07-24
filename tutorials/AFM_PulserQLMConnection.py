@@ -15,9 +15,6 @@ FRESNEL_DEVICE = conn.fetch_available_devices()["qat.qpus:PasqalQPU"]
 print("Using the Device:", "\n")
 FRESNEL_DEVICE.print_specs()
 
-# Simulation parameters
-NBSHOTS = 0  # must be 0 for AnalogQPU
-MODULATION = False  # Whether or not to use Modulated Sequence in the simulation
 # Simulation
 reg_layout = FRESNEL_DEVICE.calibrated_register_layouts[
     "TriangularLatticeLayout(61, 5.0µm)"
