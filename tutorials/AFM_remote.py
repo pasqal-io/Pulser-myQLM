@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pulser import Pulse, Sequence, InterpolatedWaveform
 from pulser.devices import Device
-from pulser.waveforms import RampWaveform
 from qat.qpus import RemoteQPU
 
 from pulser_myqlm import IsingAQPU
