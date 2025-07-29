@@ -11,7 +11,7 @@ from pulser_myqlm import FresnelQPU, IsingAQPU
 
 # Connect to the QPU
 PORT = 1234
-IP = ""  # TODO: Modify this IP
+IP = "127.0.0.1"  # TODO: Modify this IP
 QPU = RemoteQPU(PORT, IP)
 
 # Get the device of the QPU

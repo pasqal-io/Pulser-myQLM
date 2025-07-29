@@ -49,9 +49,11 @@ class FresnelQPU(QPUHandler):
         base_uri: str | None,
         version: str = "latest",
         max_nbshots: int = DEFAULT_NUMBER_OF_SHOTS,
+        error_if_non_operational: bool = False,
     ):
         super().__init__()
         self._max_nbshots = max_nbshots
+        self.error_if_non_operational = error_if_non_operational
         self._qpu_client = (
             None if base_uri is None else PasqalQPUClient(base_uri, version)
         )
@@ -120,8 +122,10 @@ class FresnelQPU(QPUHandler):
         """Polls QPU until it is operational."""
         msg = f"QPU not operational, will try again in {QPU_POLLING_INTERVAL_SECONDS}s"
         while not self.is_operational:
+            logger.warning(msg)
             warnings.warn(msg, UserWarning)
             time.sleep(QPU_POLLING_INTERVAL_SECONDS)
+        logger.info("QPU is operational.")
 
     def serve(
         self,
@@ -157,7 +161,8 @@ class FresnelQPU(QPUHandler):
                 message="Results are only available if base_uri is defined",
             )
         job_id = job_info.get_id()
-        while job_info.get_status() not in ["ERROR", "DONE"]:
+        while (status := job_info.get_status()) not in ["ERROR", "DONE"]:
+            logger.info(f"Got Job Status: {status}")
             # We can't know how long processing the job will take on the QPU
             # We want to get the result, no matter QPU's availability
             # We poll the status of the job until termination ("ERROR" or "DONE")
@@ -275,6 +280,16 @@ class FresnelQPU(QPUHandler):
             )
         modulation = other_dict.get("modulation", False)
         # Check that the system is operational
+        if self.error_if_non_operational:
+            if not self.is_operational:
+                raise QPUException(
+                    ErrorType.ABORT,
+                    message=(
+                        "QPU is not operational, please submit when the QPU's "
+                        "status is 'UP'. Check `get_specs().meta_data['operational_"
+                        "status']`."
+                    ),
+                )
         self._poll_system()
         # Submit a job to the API
         max_nb_run = (
@@ -303,6 +318,7 @@ class FresnelQPU(QPUHandler):
         )
 
         job_info = self._wait_job_results(job_info)
-
+        counter = job_info.get_counter_result()
+        logger.info(f"Job #{job_info.get_id()} done, got{counter}.")
         # Convert the output of the API into a MyQLM Result
-        return IsingAQPU.convert_samples_to_result(job_info.get_counter_result())
+        return IsingAQPU.convert_samples_to_result(counter)

@@ -2,8 +2,17 @@
 
 """Connects to a Pasqal QPU and deploys a MyQLM server using FresnelQPU."""
 import argparse
-
+import logging
 from pulser_myqlm import FresnelQPU
+
+logging.basicConfig(
+    filename="logs_fresnel_qpu_server.txt",
+    filemode="a",
+    format="%(asctime)s,%(msecs)03d %(name)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=logging.DEBUG,
+)
+logging.getLogger().setLevel(logging.DEBUG)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
