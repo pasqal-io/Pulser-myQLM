@@ -468,7 +468,6 @@ def test_job_simulation(
 @mock.patch("pulser_myqlm.constants.QPU_POLLING_INTERVAL_SECONDS")
 @pytest.mark.parametrize("base_uri", base_uris)
 @pytest.mark.parametrize("remote_fresnel", [False, True])
-@pytest.mark.parametrize("error_if_non_operational", [False, True])
 def test_non_operational_qpu(
     polling_interval: mock.Mock,
     mock_get: mock.Mock,
@@ -476,7 +475,6 @@ def test_non_operational_qpu(
     schedule_seq: tuple[Schedule, Sequence],
     base_uri: str | None,
     remote_fresnel: bool,
-    error_if_non_operational: bool,
 ):
     """Test the impact of non operational QPU on the flow of submitting a job.
 
@@ -502,7 +500,7 @@ def test_non_operational_qpu(
     # - is_operational check
     mock_get.side_effect = mocked_requests_get_non_operational
     fresnel_qpu = FresnelQPU(
-        base_uri=base_uri, error_if_non_operational=error_if_non_operational
+        base_uri=base_uri
     )
 
     assert not fresnel_qpu.is_operational if base_uri else fresnel_qpu.is_operational
@@ -583,12 +581,6 @@ def test_non_operational_qpu(
     mock_post.side_effect = mocked_requests_post_success
     # Necessary for expected results to match
     np.random.seed(111)
-    if error_if_non_operational:
-        with pytest.raises(
-            QPUException, match="QPU is not operational, please submit "
-        ):
-            result = qpu.submit(job_from_seq)
-        return
     with (
         pytest.warns(UserWarning, match="QPU not operational, will try again in")
         if base_uri

@@ -68,6 +68,10 @@ To get the documentation:
 python fresnel_qpu_server.py --help
 ```
 
+#### QPU interruption
+
+Behavior when QPU is not operational is configurable with the env var `QPU_POLLING_TIMEOUT_SECONDS`. By default, the value is -1 which means the process will holds the current jobs and retry forever. Setting the variable to 0 will make all jobs sent to the QPU to fail immediately if the QPU is down.
+
 ## Continuous Integration Requirements
 
 We enforce some continuous integration standards. Make sure you follow them, otherwise your pull requests will be blocked until you fix them. To check if your changes pass all CI tests before you make the PR, you'll need additional packages, which you can install by running

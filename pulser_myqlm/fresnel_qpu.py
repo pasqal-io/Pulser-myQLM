@@ -6,6 +6,7 @@ import logging
 import time
 import warnings
 from typing import cast
+from datetime import datetime
 
 import requests
 from pulser.devices._device_datacls import Device
@@ -19,6 +20,7 @@ from pulser_myqlm.constants import (
     JOB_POLLING_INTERVAL_SECONDS,
     QPU_POLLING_INTERVAL_SECONDS,
     TEMP_DEVICE,
+    QPU_POLLING_TIMEOUT_SECONDS,
 )
 from pulser_myqlm.helpers.deserialize_other import deserialize_other
 from pulser_myqlm.helpers.requests import JobInfo, PasqalQPUClient
@@ -49,11 +51,9 @@ class FresnelQPU(QPUHandler):
         base_uri: str | None,
         version: str = "latest",
         max_nbshots: int = DEFAULT_NUMBER_OF_SHOTS,
-        error_if_non_operational: bool = False,
     ):
         super().__init__()
         self._max_nbshots = max_nbshots
-        self.error_if_non_operational = error_if_non_operational
         self._qpu_client = (
             None if base_uri is None else PasqalQPUClient(base_uri, version)
         )
@@ -121,10 +121,20 @@ class FresnelQPU(QPUHandler):
     def _poll_system(self) -> None:
         """Polls QPU until it is operational."""
         msg = f"QPU not operational, will try again in {QPU_POLLING_INTERVAL_SECONDS}s"
+        polling_start = datetime.now()
         while not self.is_operational:
             logger.warning(msg)
             warnings.warn(msg, UserWarning)
             time.sleep(QPU_POLLING_INTERVAL_SECONDS)
+            if QPU_POLLING_TIMEOUT_SECONDS != -1 and (datetime.now() - polling_start).total_seconds > QPU_POLLING_TIMEOUT_SECONDS:
+                raise QPUException(
+                    ErrorType.ABORT,
+                    message=(
+                        f"QPU not operational for more than {QPU_POLLING_TIMEOUT_SECONDS} seconds. Aborting."
+                        "Submit when the QPU's status is 'UP'."
+                        "Check `get_specs().meta_data['operational_status']`."
+                    ),
+                )
         logger.info("QPU is operational.")
 
     def serve(
@@ -162,7 +172,7 @@ class FresnelQPU(QPUHandler):
             )
         job_id = job_info.get_id()
         while (status := job_info.get_status()) not in ["ERROR", "DONE"]:
-            logger.info(f"Got Job Status: {status}")
+            logger.info(f"Current Job %s Status: %s", job_id, status)
             # We can't know how long processing the job will take on the QPU
             # We want to get the result, no matter QPU's availability
             # We poll the status of the job until termination ("ERROR" or "DONE")
@@ -279,17 +289,6 @@ class FresnelQPU(QPUHandler):
                 ),
             )
         modulation = other_dict.get("modulation", False)
-        # Check that the system is operational
-        if self.error_if_non_operational:
-            if not self.is_operational:
-                raise QPUException(
-                    ErrorType.ABORT,
-                    message=(
-                        "QPU is not operational, please submit when the QPU's "
-                        "status is 'UP'. Check `get_specs().meta_data['operational_"
-                        "status']`."
-                    ),
-                )
         self._poll_system()
         # Submit a job to the API
         max_nb_run = (
