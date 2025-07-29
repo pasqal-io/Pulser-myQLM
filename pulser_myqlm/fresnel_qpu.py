@@ -289,6 +289,7 @@ class FresnelQPU(QPUHandler):
                 ),
             )
         modulation = other_dict.get("modulation", False)
+        # Check that the system is operational
         self._poll_system()
         # Submit a job to the API
         max_nb_run = (
