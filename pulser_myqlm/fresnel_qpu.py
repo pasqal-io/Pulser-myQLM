@@ -126,12 +126,12 @@ class FresnelQPU(QPUHandler):
             logger.warning(msg)
             warnings.warn(msg, UserWarning)
             time.sleep(QPU_POLLING_INTERVAL_SECONDS)
-            if QPU_POLLING_TIMEOUT_SECONDS != -1 and (datetime.now() - polling_start).total_seconds > QPU_POLLING_TIMEOUT_SECONDS:
+            if QPU_POLLING_TIMEOUT_SECONDS != -1 and (datetime.now() - polling_start).total_seconds() > QPU_POLLING_TIMEOUT_SECONDS:
                 raise QPUException(
                     ErrorType.ABORT,
                     message=(
-                        f"QPU not operational for more than {QPU_POLLING_TIMEOUT_SECONDS} seconds. Aborting."
-                        "Submit when the QPU's status is 'UP'."
+                        f"QPU not operational for more than {QPU_POLLING_TIMEOUT_SECONDS} seconds. Aborting. "
+                        "Submit when the QPU's status is 'UP'. "
                         "Check `get_specs().meta_data['operational_status']`."
                     ),
                 )
