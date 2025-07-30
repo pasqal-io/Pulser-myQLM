@@ -126,11 +126,16 @@ class FresnelQPU(QPUHandler):
             logger.warning(msg)
             warnings.warn(msg, UserWarning)
             time.sleep(QPU_POLLING_INTERVAL_SECONDS)
-            if QPU_POLLING_TIMEOUT_SECONDS != -1 and (datetime.now() - polling_start).total_seconds() > QPU_POLLING_TIMEOUT_SECONDS:
+            if (
+                QPU_POLLING_TIMEOUT_SECONDS != -1
+                and (datetime.now() - polling_start).total_seconds()
+                > QPU_POLLING_TIMEOUT_SECONDS
+            ):
                 raise QPUException(
                     ErrorType.ABORT,
                     message=(
-                        f"QPU not operational for more than {QPU_POLLING_TIMEOUT_SECONDS} seconds. Aborting. "
+                        "QPU not operational for more than "
+                        f"{QPU_POLLING_TIMEOUT_SECONDS} seconds. Aborting. "
                         "Submit when the QPU's status is 'UP'. "
                         "Check `get_specs().meta_data['operational_status']`."
                     ),
@@ -171,7 +176,7 @@ class FresnelQPU(QPUHandler):
             )
         job_id = job_info.get_id()
         while (status := job_info.get_status()) not in ["ERROR", "DONE"]:
-            logger.info(f"Current Job %s Status: %s", job_id, status)
+            logger.info(f"Current Job {job_id} Status: {status}")
             # We can't know how long processing the job will take on the QPU
             # We want to get the result, no matter QPU's availability
             # We poll the status of the job until termination ("ERROR" or "DONE")

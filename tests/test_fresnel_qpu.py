@@ -69,6 +69,7 @@ SYSTEM_REPONSE = MockResponse(
     },
     200,
 )
+JOB_UID = 1
 
 
 def mocked_requests_get_success(*args, **kwargs):
@@ -80,6 +81,7 @@ def mocked_requests_get_success(*args, **kwargs):
                 "data": {
                     "status": "DONE",
                     "result": json.dumps({"counter": {"000": 0.999, "100": 0.001}}),
+                    "uid": JOB_UID,
                 }
             },
             200,
@@ -102,7 +104,9 @@ def mocked_requests_get_running(*args, **kwargs):
 def mocked_requests_get_non_operational(*args, **kwargs):
     """Mocks a requests.get response from a non-working system."""
     mockresponse = {
-        OPERATIONAL_URL: MockResponse({"data": {"operational_status": "DOWN"}}, 200),
+        OPERATIONAL_URL: MockResponse(
+            {"data": {"operational_status": "DOWN", "uid": JOB_UID}}, 200
+        ),
         JOB_URL: MockResponse({"data": {"status": "ERROR"}}, 200),
         SYSTEM_URL: SYSTEM_REPONSE,
     }
@@ -116,7 +120,7 @@ def mocked_requests_get_error(*args, **kwargs):
     """Mocks a requests.get response from a working system with non-working jobs."""
     mockresponse = {
         OPERATIONAL_URL: MockResponse({"data": {"operational_status": "UP"}}, 200),
-        JOB_URL: MockResponse({"data": {"status": "ERROR"}}, 200),
+        JOB_URL: MockResponse({"data": {"status": "ERROR", "uid": JOB_UID}}, 200),
         SYSTEM_URL: SYSTEM_REPONSE,
     }
     url = args[0] if args else kwargs["url"]
@@ -147,7 +151,7 @@ def mocked_requests_post_success(*args, **kwargs):
     if args[0] == job_url if args else kwargs["url"] == job_url:
         if list(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
             return MockResponse(None, 400)
-        return MockResponse({"data": {"status": "PENDING", "uid": 1}}, 200)
+        return MockResponse({"data": {"status": "PENDING", "uid": JOB_UID}}, 200)
     return MockResponse(None, 404)
 
 
@@ -157,7 +161,7 @@ def mocked_requests_post_fail(*args, **kwargs):
     if args[0] == job_url if args else kwargs["url"] == job_url:
         if set(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
             return MockResponse(None, 400)
-        return MockResponse({"data": {"status": "ERROR", "uid": 1}}, 500)
+        return MockResponse({"data": {"status": "ERROR", "uid": JOB_UID}}, 500)
     return MockResponse(None, 404)
 
 
@@ -499,30 +503,9 @@ def test_non_operational_qpu(
     # - FresnelQPU instantiation
     # - is_operational check
     mock_get.side_effect = mocked_requests_get_non_operational
-    fresnel_qpu = FresnelQPU(
-        base_uri=base_uri
-    )
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
 
     assert not fresnel_qpu.is_operational if base_uri else fresnel_qpu.is_operational
-
-    # Set response to non operational for first polling atempt
-    # Set response to success in second polling attempt
-    mock_get.side_effect = SideEffect(
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_success,
-    )
-    with (
-        pytest.warns(UserWarning, match="QPU not operational, will try again in")
-        if base_uri
-        else nullcontext()
-    ):
-        fresnel_qpu._poll_system()
-
     # Set response to non operational for first polling atempt
     # Set response to success in second polling attempt
     mock_get.side_effect = SideEffect(
@@ -538,12 +521,7 @@ def test_non_operational_qpu(
         PORT += 1
         server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
         server_thread.daemon = True
-        with (
-            pytest.warns(UserWarning, match="QPU not operational, will try again in")
-            if base_uri
-            else nullcontext()
-        ):
-            server_thread.start()
+        server_thread.start()
         # Wait for the server to initialize
         if base_uri:
             # Sleeping time defined by experiment

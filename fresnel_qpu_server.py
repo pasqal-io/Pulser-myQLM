@@ -39,7 +39,7 @@ if __name__ == "__main__":
         "--log-level",
         help="Sets the logging level in the default logging config",
         default="INFO",
-        choices=logging.getLevelNamesMapping().keys()
+        choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"],
     )
     parser.add_argument(
         "--log-file",
@@ -60,8 +60,8 @@ if __name__ == "__main__":
         logging.basicConfig(
             format="%(asctime)s,%(msecs)03d %(name)s %(levelname)s %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
-            level=logging.getLevelNamesMapping()[args.log_level],
-            handlers=handlers
+            level=logging.getLevelName(args.log_level),
+            handlers=handlers,
         )
     else:
         print("Setting log configuration from file %s" % args.log_config_file)
@@ -87,7 +87,9 @@ if __name__ == "__main__":
     logger.info("Connected. QPU is operational:", fresnel_qpu.is_operational)
 
     # Deploy the QPU on a port and ip
-    logger.info("Creating a server on IP: ", args.server_ip, ", PORT:", args.server_port)
+    logger.info(
+        "Creating a server on IP: ", args.server_ip, ", PORT:", args.server_port
+    )
     fresnel_qpu.serve(args.server_port, args.server_ip)
 
     # Connect to this server remotely with RemoteQPU(SERVER_PORT, SERVER_IP)
