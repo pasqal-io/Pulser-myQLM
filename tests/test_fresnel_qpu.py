@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import json
 import logging
 import time
@@ -176,133 +175,133 @@ def _switch_seq_device(seq, device):
     return seq
 
 
-# @pytest.mark.parametrize(
-#     "other_value",
-#     [
-#         None,
-#         json.dumps({"modulation": True}).encode("utf-8"),
-#         json.dumps({"abstr_seq": "0", "modulation": False}).encode("utf-8"),
-#     ],
-# )
-# def test_job_deserialization_fresnel(schedule_seq, other_value):
-#     """Test value of Job.schedule._other for the result of a Sequence conversion."""
-#     schedule, seq = schedule_seq
-#     aqpu = IsingAQPU.from_sequence(seq, qpu=FresnelQPU(None))
-#     job = schedule.to_job()
-#     job.schedule._other = other_value
-#     with pytest.raises(
-#         QPUException, match="Failed at deserializing Job.Schedule._other"
-#     ):
-#         aqpu.submit(job)
+@pytest.mark.parametrize(
+    "other_value",
+    [
+        None,
+        json.dumps({"modulation": True}).encode("utf-8"),
+        json.dumps({"abstr_seq": "0", "modulation": False}).encode("utf-8"),
+    ],
+)
+def test_job_deserialization_fresnel(schedule_seq, other_value):
+    """Test value of Job.schedule._other for the result of a Sequence conversion."""
+    schedule, seq = schedule_seq
+    aqpu = IsingAQPU.from_sequence(seq, qpu=FresnelQPU(None))
+    job = schedule.to_job()
+    job.schedule._other = other_value
+    with pytest.raises(
+        QPUException, match="Failed at deserializing Job.Schedule._other"
+    ):
+        aqpu.submit(job)
 
 
-# @pytest.mark.parametrize("qpu", ["local", "remote"])
-# def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
-#     """Test simulation of a Sequence using pulser-simulation."""
-#     np.random.seed(111)
-#     schedule, seq = schedule_seq
-#     # If qpu is None, pulser-simulation in IsingAQPU is used
-#     if qpu == "local":
-#         # pulser-simulation in FresnelQPU is used
-#         sim_qpu = FresnelQPU(None)
-#         assert sim_qpu.is_operational
-#     if qpu == "remote":
-#         # pulser-simulation in a Remote FresnelQPU is used
-#         # Deploying a FresnelQPU on a remote server using serve
-#         server_thread = Thread(target=deploy_qpu, args=(FresnelQPU(None), PORT))
-#         server_thread.daemon = True
-#         server_thread.start()
-#         # Accessing it with RemoteQPU
-#         sim_qpu = get_remote_qpu(PORT)
+@pytest.mark.parametrize("qpu", ["local", "remote"])
+def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
+    """Test simulation of a Sequence using pulser-simulation."""
+    np.random.seed(111)
+    schedule, seq = schedule_seq
+    # If qpu is None, pulser-simulation in IsingAQPU is used
+    if qpu == "local":
+        # pulser-simulation in FresnelQPU is used
+        sim_qpu = FresnelQPU(None)
+        assert sim_qpu.is_operational
+    if qpu == "remote":
+        # pulser-simulation in a Remote FresnelQPU is used
+        # Deploying a FresnelQPU on a remote server using serve
+        server_thread = Thread(target=deploy_qpu, args=(FresnelQPU(None), PORT))
+        server_thread.daemon = True
+        server_thread.start()
+        # Accessing it with RemoteQPU
+        sim_qpu = get_remote_qpu(PORT)
 
-#     aqpu = IsingAQPU.from_sequence(seq, qpu=sim_qpu)
-#     # FresnelQPU can only run job with a schedule
-#     # Defining a job from a circuit instead of a schedule
-#     with pytest.raises(
-#         QPUException, match="FresnelQPU can only execute a schedule job."
-#     ):
-#         aqpu.submit(circuit_job)
+    aqpu = IsingAQPU.from_sequence(seq, qpu=sim_qpu)
+    # FresnelQPU can only run job with a schedule
+    # Defining a job from a circuit instead of a schedule
+    with pytest.raises(
+        QPUException, match="FresnelQPU can only execute a schedule job."
+    ):
+        aqpu.submit(circuit_job)
 
-#     # Job also needs its schedule to have _other defined
-#     with pytest.raises(
-#         QPUException, match="job.schedule._other must be a string encoded in bytes."
-#     ):
-#         aqpu.submit(Schedule(Observable(2)).to_job())
+    # Job also needs its schedule to have _other defined
+    with pytest.raises(
+        QPUException, match="job.schedule._other must be a string encoded in bytes."
+    ):
+        aqpu.submit(Schedule(Observable(2)).to_job())
 
-#     # Run job created from a sequence using convert_sequence_to_job
-#     job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
-#     assert job_from_seq.nbshots == 1000
-#     result = aqpu.submit(job_from_seq)
-#     exp_result = [
-#         (Sample(probability=0.999, state=0), "|000>"),
-#         (Sample(probability=0.001, state=1), "|001>"),
-#     ]
-#     compare_results_raw_data(result.raw_data, exp_result)
-#     assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "001": 1}
-#     # Run job created from a sequence using convert_sequence_to_schedule
-#     schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
-#     job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
-#     assert not job_from_seq.nbshots
-#     result_schedule = aqpu.submit(job_from_seq)
-#     exp_result_schedule = [(Sample(probability=1, state=0), "|000>")]
-#     compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
-#     assert IsingAQPU.convert_result_to_samples(result_schedule) == {"000": 2000}
+    # Run job created from a sequence using convert_sequence_to_job
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
+    assert job_from_seq.nbshots == 1000
+    result = aqpu.submit(job_from_seq)
+    exp_result = [
+        (Sample(probability=0.999, state=0), "|000>"),
+        (Sample(probability=0.001, state=1), "|001>"),
+    ]
+    compare_results_raw_data(result.raw_data, exp_result)
+    assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "001": 1}
+    # Run job created from a sequence using convert_sequence_to_schedule
+    schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
+    job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
+    assert not job_from_seq.nbshots
+    result_schedule = aqpu.submit(job_from_seq)
+    exp_result_schedule = [(Sample(probability=1, state=0), "|000>")]
+    compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
+    assert IsingAQPU.convert_result_to_samples(result_schedule) == {"000": 2000}
 
-#     # Can simulate Job if Schedule is not equivalent to Sequence
-#     empty_job = Job()
-#     empty_schedule = Schedule()
-#     empty_schedule._other = schedule_from_seq._other
-#     empty_job.schedule = empty_schedule
-#     result_empty_sch = aqpu.submit(empty_job)
-#     exp_result_empty_sch = [
-#         (Sample(probability=0.9995, state=0), "|000>"),
-#         (Sample(probability=0.0005, state=2), "|010>"),
-#     ]
-#     compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
-#     assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
-#         "000": 1999,
-#         "010": 1,
-#     }
-#     # Can't simulate a Job with too many shots
-#     too_many_shots_job = IsingAQPU.convert_sequence_to_job(
-#         seq, nbshots=10 * TEMP_DEVICE.max_runs
-#     )
-#     with pytest.raises(QPUException, match="Too many runs asked"):
-#         aqpu.submit(too_many_shots_job)
+    # Can simulate Job if Schedule is not equivalent to Sequence
+    empty_job = Job()
+    empty_schedule = Schedule()
+    empty_schedule._other = schedule_from_seq._other
+    empty_job.schedule = empty_schedule
+    result_empty_sch = aqpu.submit(empty_job)
+    exp_result_empty_sch = [
+        (Sample(probability=0.9995, state=0), "|000>"),
+        (Sample(probability=0.0005, state=2), "|010>"),
+    ]
+    compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
+    assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
+        "000": 1999,
+        "010": 1,
+    }
+    # Can't simulate a Job with too many shots
+    too_many_shots_job = IsingAQPU.convert_sequence_to_job(
+        seq, nbshots=10 * TEMP_DEVICE.max_runs
+    )
+    with pytest.raises(QPUException, match="Too many runs asked"):
+        aqpu.submit(too_many_shots_job)
 
-#     # Can't simulate a parametrized sequence
-#     amp = seq.declare_variable("amp", dtype=float)
-#     seq.add(Pulse.ConstantPulse(1000, amp, 0, 0), "ryd_glob")
-#     assert seq.is_parametrized()
-#     _other = json.dumps(
-#         {"abstr_seq": seq.to_abstract_repr(), "modulation": False}
-#     ).encode("utf-8")
-#     param_schedule = Schedule()
-#     param_schedule._other = _other
-#     param_job = Job()
-#     param_job.schedule = param_schedule
-#     with pytest.raises(QPUException, match="Can't submit a parametrized sequence."):
-#         aqpu.submit(param_job)
+    # Can't simulate a parametrized sequence
+    amp = seq.declare_variable("amp", dtype=float)
+    seq.add(Pulse.ConstantPulse(1000, amp, 0, 0), "ryd_glob")
+    assert seq.is_parametrized()
+    _other = json.dumps(
+        {"abstr_seq": seq.to_abstract_repr(), "modulation": False}
+    ).encode("utf-8")
+    param_schedule = Schedule()
+    param_schedule._other = _other
+    param_job = Job()
+    param_job.schedule = param_schedule
+    with pytest.raises(QPUException, match="Can't submit a parametrized sequence."):
+        aqpu.submit(param_job)
 
-#     # Can't simulate a sequence with a mappable register
-#     mappable_seq = Sequence(
-#         seq.register.layout.make_mappable_register(n_qubits=10), seq.device
-#     )
-#     mappable_seq.declare_channel("rydberg_global", "rydberg_global")
-#     mappable_seq.add(Pulse.ConstantPulse(1000, np.pi, 0, 0), "rydberg_global")
-#     assert mappable_seq.is_register_mappable()
-#     _other = json.dumps(
-#         {"abstr_seq": mappable_seq.to_abstract_repr(), "modulation": False}
-#     ).encode("utf-8")
-#     mappable_schedule = Schedule()
-#     mappable_schedule._other = _other
-#     mappable_job = Job()
-#     mappable_job.schedule = mappable_schedule
+    # Can't simulate a sequence with a mappable register
+    mappable_seq = Sequence(
+        seq.register.layout.make_mappable_register(n_qubits=10), seq.device
+    )
+    mappable_seq.declare_channel("rydberg_global", "rydberg_global")
+    mappable_seq.add(Pulse.ConstantPulse(1000, np.pi, 0, 0), "rydberg_global")
+    assert mappable_seq.is_register_mappable()
+    _other = json.dumps(
+        {"abstr_seq": mappable_seq.to_abstract_repr(), "modulation": False}
+    ).encode("utf-8")
+    mappable_schedule = Schedule()
+    mappable_schedule._other = _other
+    mappable_job = Job()
+    mappable_job.schedule = mappable_schedule
 
-#     with pytest.raises(
-#         QPUException, match="Can't submit a sequence with a mappable register."
-#     ):
-#         aqpu.submit(mappable_job)
+    with pytest.raises(
+        QPUException, match="Can't submit a sequence with a mappable register."
+    ):
+        aqpu.submit(mappable_job)
 
 
 class SideEffect:
@@ -320,152 +319,152 @@ BASE_URI = "http://fresneldevice/api"
 base_uris = [BASE_URI, None]
 
 
-# @mock.patch(
-#     "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_success
-# )
-# @mock.patch(
-#     "pulser_myqlm.fresnel_qpu.requests.post",
-#     side_effect=mocked_requests_post_success,
-# )
-# @pytest.mark.parametrize("base_uri", base_uris)
-# @pytest.mark.parametrize("remote_fresnel", [False, True])
-# def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_seq):
-#     """Test submission of Jobs to a FresnelQPU interfacing a working QPU."""
-#     global PORT
-#     # Can't connect with a wrong address
-#     with pytest.raises(QPUException, match="Connection with API failed"):
-#         FresnelQPU(base_uri="")
+@mock.patch(
+    "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_success
+)
+@mock.patch(
+    "pulser_myqlm.fresnel_qpu.requests.post",
+    side_effect=mocked_requests_post_success,
+)
+@pytest.mark.parametrize("base_uri", base_uris)
+@pytest.mark.parametrize("remote_fresnel", [False, True])
+def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_seq):
+    """Test submission of Jobs to a FresnelQPU interfacing a working QPU."""
+    global PORT
+    # Can't connect with a wrong address
+    with pytest.raises(QPUException, match="Connection with API failed"):
+        FresnelQPU(base_uri="")
 
-#     # Can connect even if first connections fail
-#     SideEffect(
-#         mocked_requests_get_400_exception,
-#         mocked_requests_get_500_exception,
-#         mocked_requests_raises_connection_error,
-#         mocked_requests_raises_timeout_error,
-#         mocked_requests_get_success,
-#     )
-#     fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    # Can connect even if first connections fail
+    SideEffect(
+        mocked_requests_get_400_exception,
+        mocked_requests_get_500_exception,
+        mocked_requests_raises_connection_error,
+        mocked_requests_raises_timeout_error,
+        mocked_requests_get_success,
+    )
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
 
-#     # Deploy the QPU on a Qaptiva server
-#     if remote_fresnel:
-#         PORT += 1
-#         server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
-#         server_thread.daemon = True
-#         # Can create server even if first connections fail
-#         SideEffect(
-#             mocked_requests_get_400_exception,
-#             mocked_requests_get_500_exception,
-#             mocked_requests_raises_connection_error,
-#             mocked_requests_raises_timeout_error,
-#             mocked_requests_get_success,
-#         )
-#         server_thread.start()
+    # Deploy the QPU on a Qaptiva server
+    if remote_fresnel:
+        PORT += 1
+        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
+        server_thread.daemon = True
+        # Can create server even if first connections fail
+        SideEffect(
+            mocked_requests_get_400_exception,
+            mocked_requests_get_500_exception,
+            mocked_requests_raises_connection_error,
+            mocked_requests_raises_timeout_error,
+            mocked_requests_get_success,
+        )
+        server_thread.start()
 
-#     # Can't submit if Rydberg level of the Device's Sequence don't match the QPU's
-#     _, seq = schedule_seq
-#     mock_seq = _switch_seq_device(seq, MockDevice)
-#     job_from_seq = IsingAQPU.convert_sequence_to_job(mock_seq)
-#     qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
-#     with pytest.raises(QPUException, match="The Sequence in job.schedule._other"):
-#         qpu.submit(job_from_seq)
+    # Can't submit if Rydberg level of the Device's Sequence don't match the QPU's
+    _, seq = schedule_seq
+    mock_seq = _switch_seq_device(seq, MockDevice)
+    job_from_seq = IsingAQPU.convert_sequence_to_job(mock_seq)
+    qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
+    with pytest.raises(QPUException, match="The Sequence in job.schedule._other"):
+        qpu.submit(job_from_seq)
 
-#     # Can fetch device even if first connections fail
-#     SideEffect(
-#         mocked_requests_get_400_exception,
-#         mocked_requests_get_500_exception,
-#         mocked_requests_raises_connection_error,
-#         mocked_requests_raises_timeout_error,
-#         mocked_requests_get_success,
-#     )
-#     specs = qpu.get_specs()
-#     assert (device := deserialize_device(specs.description)) == TEMP_DEVICE
-#     assert specs.meta_data["operational_status"] == "UP"
-#     # Can't simulate if Register is not defined from a layout
-#     assert device.requires_layout  # if QPU's device requires a layout
-#     seq = Sequence(Register.triangular_lattice(2, 2, spacing=5), device)
-#     seq.declare_channel("rydberg_global", "rydberg_global")
-#     seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")
-#     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-#     with pytest.raises(QPUException, match="The Register of the Sequence"):
-#         qpu.submit(job_from_seq)
+    # Can fetch device even if first connections fail
+    SideEffect(
+        mocked_requests_get_400_exception,
+        mocked_requests_get_500_exception,
+        mocked_requests_raises_connection_error,
+        mocked_requests_raises_timeout_error,
+        mocked_requests_get_success,
+    )
+    specs = qpu.get_specs()
+    assert (device := deserialize_device(specs.description)) == TEMP_DEVICE
+    assert specs.meta_data["operational_status"] == "UP"
+    # Can't simulate if Register is not defined from a layout
+    assert device.requires_layout  # if QPU's device requires a layout
+    seq = Sequence(Register.triangular_lattice(2, 2, spacing=5), device)
+    seq.declare_channel("rydberg_global", "rydberg_global")
+    seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(QPUException, match="The Register of the Sequence"):
+        qpu.submit(job_from_seq)
 
-#     # Can't simulate if layout is not among calibrated layouts
-#     assert not device.accepts_new_layouts  # if QPU don't accept new layouts
-#     seq = Sequence(TriangularLatticeLayout(10, 5).define_register(1, 2, 5), device)
-#     seq.declare_channel("rydberg_global", "rydberg_global")
-#     seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")
-#     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-#     with pytest.raises(QPUException, match="The Register of the Sequence"):
-#         qpu.submit(job_from_seq)
+    # Can't simulate if layout is not among calibrated layouts
+    assert not device.accepts_new_layouts  # if QPU don't accept new layouts
+    seq = Sequence(TriangularLatticeLayout(10, 5).define_register(1, 2, 5), device)
+    seq.declare_channel("rydberg_global", "rydberg_global")
+    seq.add(Pulse.ConstantPulse(100, 1.0, 0.0, 0.0), "rydberg_global")
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(QPUException, match="The Register of the Sequence"):
+        qpu.submit(job_from_seq)
 
-#     # Can't simulate if Sequence is empty
-#     assert not device.accepts_new_layouts  # if QPU don't accept new layouts
-#     seq = Sequence(schedule_seq[1].register, device)  # Sequence with a correct register
-#     seq.declare_channel("rydberg_global", "rydberg_global")
-#     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-#     with pytest.raises(
-#         QPUException, match="The Sequence should contain at least one Pulse"
-#     ):
-#         qpu.submit(job_from_seq)
+    # Can't simulate if Sequence is empty
+    assert not device.accepts_new_layouts  # if QPU don't accept new layouts
+    seq = Sequence(schedule_seq[1].register, device)  # Sequence with a correct register
+    seq.declare_channel("rydberg_global", "rydberg_global")
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(
+        QPUException, match="The Sequence should contain at least one Pulse"
+    ):
+        qpu.submit(job_from_seq)
 
-#     # adding a delay does not make the sequence "non empty"
-#     seq.delay(100, "rydberg_global")
-#     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-#     with pytest.raises(
-#         QPUException, match="The Sequence should contain at least one Pulse"
-#     ):
-#         qpu.submit(job_from_seq)
+    # adding a delay does not make the sequence "non empty"
+    seq.delay(100, "rydberg_global")
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    with pytest.raises(
+        QPUException, match="The Sequence should contain at least one Pulse"
+    ):
+        qpu.submit(job_from_seq)
 
 
-# @mock.patch(
-#     "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_success
-# )
-# @mock.patch(
-#     "pulser_myqlm.fresnel_qpu.requests.post",
-#     side_effect=mocked_requests_post_success,
-# )
-# @pytest.mark.parametrize("base_uri", base_uris)
-# @pytest.mark.parametrize("remote_fresnel", [False, True])
-# @pytest.mark.parametrize("device", [TEMP_DEVICE, TEMP_DEVICE.to_virtual()])
-# def test_job_simulation(
-#     mock_get,
-#     mock_post,
-#     base_uri,
-#     device,
-#     remote_fresnel,
-#     schedule_seq,
-# ):
-#     """Test Sequence simulation on a FresnelQPU interfacing a working QPU."""
-#     global PORT
+@mock.patch(
+    "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_success
+)
+@mock.patch(
+    "pulser_myqlm.fresnel_qpu.requests.post",
+    side_effect=mocked_requests_post_success,
+)
+@pytest.mark.parametrize("base_uri", base_uris)
+@pytest.mark.parametrize("remote_fresnel", [False, True])
+@pytest.mark.parametrize("device", [TEMP_DEVICE, TEMP_DEVICE.to_virtual()])
+def test_job_simulation(
+    mock_get,
+    mock_post,
+    base_uri,
+    device,
+    remote_fresnel,
+    schedule_seq,
+):
+    """Test Sequence simulation on a FresnelQPU interfacing a working QPU."""
+    global PORT
 
-#     # Modify the device of the Sequence
-#     _, seq = schedule_seq
-#     seq = _switch_seq_device(seq, device)
-#     fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    # Modify the device of the Sequence
+    _, seq = schedule_seq
+    seq = _switch_seq_device(seq, device)
+    fresnel_qpu = FresnelQPU(base_uri=base_uri)
 
-#     # Deploy the QPU on a Qaptiva server
-#     if remote_fresnel:
-#         PORT += 1
-#         server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
-#         server_thread.daemon = True
-#         server_thread.start()
-#     qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
+    # Deploy the QPU on a Qaptiva server
+    if remote_fresnel:
+        PORT += 1
+        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
+        server_thread.daemon = True
+        server_thread.start()
+    qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
 
-#     # Simulate Sequence using Pulser Simulation
-#     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-#     np.random.seed(111)
-#     result = qpu.submit(job_from_seq)
-#     if base_uri:
-#         exp_result = [
-#             (Sample(probability=0.999, state=0), "|000>"),
-#             (Sample(probability=0.001, state=4), "|100>"),
-#         ]
-#     else:
-#         exp_result = [
-#             (Sample(probability=0.9995, state=0), "|000>"),
-#             (Sample(probability=0.0005, state=1), "|001>"),
-#         ]
-#     compare_results_raw_data(result.raw_data, exp_result)
+    # Simulate Sequence using Pulser Simulation
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    np.random.seed(111)
+    result = qpu.submit(job_from_seq)
+    if base_uri:
+        exp_result = [
+            (Sample(probability=0.999, state=0), "|000>"),
+            (Sample(probability=0.001, state=4), "|100>"),
+        ]
+    else:
+        exp_result = [
+            (Sample(probability=0.9995, state=0), "|000>"),
+            (Sample(probability=0.0005, state=1), "|001>"),
+        ]
+    compare_results_raw_data(result.raw_data, exp_result)
 
 
 @mock.patch("pulser_myqlm.fresnel_qpu.requests.post")
@@ -503,6 +502,7 @@ def test_non_operational_qpu(
     polling_interval.side_effect = polling_interval_duration
 
     def _test_non_operational_qpu():
+        global PORT
         # Set response to non operational for
         # - FresnelQPU instantiation
         # - is_operational check
