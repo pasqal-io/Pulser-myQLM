@@ -160,7 +160,6 @@ class FresnelQPU(QPUHandler):
                     a maximum of 10 running threads
                 "fork": multi-process server, each connection runs in a new process
         """
-        self._poll_system()
         super().serve(port, host_ip, server_type, **kwargs)
 
     def _wait_job_results(self, job_info: JobInfo) -> JobInfo:
