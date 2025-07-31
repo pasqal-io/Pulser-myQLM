@@ -2,7 +2,7 @@
 
 """Connects to a Pasqal QPU and deploys a MyQLM server using FresnelQPU."""
 import argparse
-
+import logging
 from pulser_myqlm import FresnelQPU
 
 if __name__ == "__main__":
@@ -35,11 +35,43 @@ if __name__ == "__main__":
         default=False,
         action="store_true",
     )
-
+    parser.add_argument(
+        "--log-level",
+        help="Sets the logging level in the default logging config",
+        default="INFO",
+        choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"],
+    )
+    parser.add_argument(
+        "--log-file",
+        help="Sets the logging file in the default logging config",
+        default="logs_fresnel_qpu_server.txt",
+    )
+    parser.add_argument(
+        "--log-config-file",
+        help="Overrides the whole logging config from file",
+        default=None,
+    )
     args = parser.parse_args()
+
+    if args.log_config_file is None:
+        handlers = [logging.StreamHandler()]
+        if args.log_file:
+            handlers.append(logging.FileHandler(args.log_file))
+        logging.basicConfig(
+            format="%(asctime)s,%(msecs)03d %(name)s %(levelname)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            level=logging.getLevelName(args.log_level),
+            handlers=handlers,
+        )
+    else:
+        print("Setting log configuration from file %s" % args.log_config_file)
+        logging.config.fileConfig(args.log_config_file)
+
+    logger = logging.getLogger(__name__)
+
     if args.local:
         # Emulate the connection with a FresnelQPU using pulser-simulation
-        print(
+        logger.info(
             "Deploying a FresnelQPU using pulser-simulation as backend on IP:"
             f"{args.server_ip}, PORT:{args.server_port}."
         )
@@ -50,12 +82,12 @@ if __name__ == "__main__":
             "as an argument."
         )
     # a FresnelQPU connected to a remote VM
-    print("Connecting to IP:", args.qpu_ip, ", PORT:", args.qpu_port)
+    logger.info(f"Connecting to IP:{args.qpu_ip}, PORT:{args.qpu_port}")
     fresnel_qpu = FresnelQPU(f"http://{args.qpu_ip}:{args.qpu_port}/api", version="v1")
-    print("Connected. QPU is operational:", fresnel_qpu.is_operational)
+    logger.info(f"Connected. QPU is operational: {fresnel_qpu.is_operational}")
 
     # Deploy the QPU on a port and ip
-    print("Creating a server on IP: ", args.server_ip, ", PORT:", args.server_port)
+    logger.info(f"Creating a server on IP: {args.server_ip}, PORT:, {args.server_port}")
     fresnel_qpu.serve(args.server_port, args.server_ip)
 
     # Connect to this server remotely with RemoteQPU(SERVER_PORT, SERVER_IP)

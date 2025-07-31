@@ -69,6 +69,7 @@ SYSTEM_REPONSE = MockResponse(
     },
     200,
 )
+JOB_UID = 1
 
 
 def mocked_requests_get_success(*args, **kwargs):
@@ -80,6 +81,7 @@ def mocked_requests_get_success(*args, **kwargs):
                 "data": {
                     "status": "DONE",
                     "result": json.dumps({"counter": {"000": 0.999, "100": 0.001}}),
+                    "uid": JOB_UID,
                 }
             },
             200,
@@ -102,7 +104,9 @@ def mocked_requests_get_running(*args, **kwargs):
 def mocked_requests_get_non_operational(*args, **kwargs):
     """Mocks a requests.get response from a non-working system."""
     mockresponse = {
-        OPERATIONAL_URL: MockResponse({"data": {"operational_status": "DOWN"}}, 200),
+        OPERATIONAL_URL: MockResponse(
+            {"data": {"operational_status": "DOWN", "uid": JOB_UID}}, 200
+        ),
         JOB_URL: MockResponse({"data": {"status": "ERROR"}}, 200),
         SYSTEM_URL: SYSTEM_REPONSE,
     }
@@ -116,7 +120,7 @@ def mocked_requests_get_error(*args, **kwargs):
     """Mocks a requests.get response from a working system with non-working jobs."""
     mockresponse = {
         OPERATIONAL_URL: MockResponse({"data": {"operational_status": "UP"}}, 200),
-        JOB_URL: MockResponse({"data": {"status": "ERROR"}}, 200),
+        JOB_URL: MockResponse({"data": {"status": "ERROR", "uid": JOB_UID}}, 200),
         SYSTEM_URL: SYSTEM_REPONSE,
     }
     url = args[0] if args else kwargs["url"]
@@ -147,7 +151,7 @@ def mocked_requests_post_success(*args, **kwargs):
     if args[0] == job_url if args else kwargs["url"] == job_url:
         if list(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
             return MockResponse(None, 400)
-        return MockResponse({"data": {"status": "PENDING", "uid": 1}}, 200)
+        return MockResponse({"data": {"status": "PENDING", "uid": JOB_UID}}, 200)
     return MockResponse(None, 404)
 
 
@@ -157,7 +161,7 @@ def mocked_requests_post_fail(*args, **kwargs):
     if args[0] == job_url if args else kwargs["url"] == job_url:
         if set(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
             return MockResponse(None, 400)
-        return MockResponse({"data": {"status": "ERROR", "uid": 1}}, 500)
+        return MockResponse({"data": {"status": "ERROR", "uid": JOB_UID}}, 500)
     return MockResponse(None, 404)
 
 
@@ -465,9 +469,10 @@ def test_job_simulation(
 
 @mock.patch("pulser_myqlm.fresnel_qpu.requests.post")
 @mock.patch("pulser_myqlm.fresnel_qpu.requests.get")
-@mock.patch("pulser_myqlm.constants.QPU_POLLING_INTERVAL_SECONDS")
+@mock.patch("pulser_myqlm.fresnel_qpu.QPU_POLLING_INTERVAL_SECONDS")
 @pytest.mark.parametrize("base_uri", base_uris)
 @pytest.mark.parametrize("remote_fresnel", [False, True])
+@pytest.mark.parametrize("polling_timeout", [-1, 0])
 def test_non_operational_qpu(
     polling_interval: mock.Mock,
     mock_get: mock.Mock,
@@ -475,6 +480,7 @@ def test_non_operational_qpu(
     schedule_seq: tuple[Schedule, Sequence],
     base_uri: str | None,
     remote_fresnel: bool,
+    polling_timeout: int,
 ):
     """Test the impact of non operational QPU on the flow of submitting a job.
 
@@ -495,107 +501,98 @@ def test_non_operational_qpu(
     polling_interval_duration = 0.1
     polling_interval.side_effect = polling_interval_duration
 
-    # Set response to non operational for
-    # - FresnelQPU instantiation
-    # - is_operational check
-    mock_get.side_effect = mocked_requests_get_non_operational
-    fresnel_qpu = FresnelQPU(base_uri=base_uri)
+    def _test_non_operational_qpu():
+        global PORT
+        # Set response to non operational for
+        # - FresnelQPU instantiation
+        # - is_operational check
+        mock_get.side_effect = mocked_requests_get_non_operational
+        fresnel_qpu = FresnelQPU(base_uri=base_uri)
 
-    assert not fresnel_qpu.is_operational if base_uri else fresnel_qpu.is_operational
+        assert (
+            not fresnel_qpu.is_operational if base_uri else fresnel_qpu.is_operational
+        )
+        # Set response to non operational for first polling atempt
+        # Set response to success in second polling attempt
+        mock_get.side_effect = SideEffect(
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_success,
+        )
+        if remote_fresnel:
+            PORT += 1
+            server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
+            server_thread.daemon = True
+            server_thread.start()
+            # Wait for the server to initialize
+            if base_uri:
+                # Sleeping time defined by experiment
+                time.sleep(55)
+        qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
 
-    # Set response to non operational for first polling atempt
-    # Set response to success in second polling attempt
-    mock_get.side_effect = SideEffect(
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_success,
-    )
-    with (
-        pytest.warns(UserWarning, match="QPU not operational, will try again in")
-        if base_uri
-        else nullcontext()
-    ):
-        fresnel_qpu._poll_system()
+        # Simulate Sequence using Pulser Simulation
+        _, seq = schedule_seq
+        job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
 
-    # Set response to non operational for first polling atempt
-    # Set response to success in second polling attempt
-    mock_get.side_effect = SideEffect(
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_success,
-    )
-    if remote_fresnel:
-        PORT += 1
-        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
-        server_thread.daemon = True
+        # Device is returned even if QPU is non-operational
+        mock_get.side_effect = SideEffect(
+            mocked_requests_get_non_operational, mocked_requests_get_non_operational
+        )
+        specs = qpu.get_specs()
+        assert deserialize_device(specs.description) == TEMP_DEVICE
+        assert specs.meta_data["operational_status"] == ("DOWN" if base_uri else "UP")
+        # Set response to non operational for first polling attempt
+        # Set response to success in second polling attempt
+        # Set response to success for querying results
+        mock_get.side_effect = SideEffect(
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_non_operational,
+            mocked_requests_get_success,
+            mocked_requests_get_success,
+            mocked_requests_get_success,
+        )
+        # Set response to sucess for posting job
+        mock_post.side_effect = mocked_requests_post_success
+        # Necessary for expected results to match
+        np.random.seed(111)
+        if polling_timeout != -1:
+            with pytest.raises(
+                QPUException, match="QPU not operational for more than "
+            ):
+                qpu.submit(job_from_seq)
+            return
         with (
             pytest.warns(UserWarning, match="QPU not operational, will try again in")
             if base_uri
             else nullcontext()
         ):
-            server_thread.start()
-        # Wait for the server to initialize
+            result = qpu.submit(job_from_seq)
         if base_uri:
-            # Sleeping time defined by experiment
-            time.sleep(55)
-    qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
+            exp_result = [
+                (Sample(probability=0.999, state=0), "|000>"),
+                (Sample(probability=0.001, state=4), "|100>"),
+            ]
+        else:
+            exp_result = [
+                (Sample(probability=0.9995, state=0), "|000>"),
+                (Sample(probability=0.0005, state=1), "|001>"),
+            ]
+        compare_results_raw_data(result.raw_data, exp_result)
 
-    # Simulate Sequence using Pulser Simulation
-    _, seq = schedule_seq
-    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
-
-    # Device is returned even if QPU is non-operational
-    mock_get.side_effect = SideEffect(
-        mocked_requests_get_non_operational, mocked_requests_get_non_operational
-    )
-    specs = qpu.get_specs()
-    assert deserialize_device(specs.description) == TEMP_DEVICE
-    assert specs.meta_data["operational_status"] == ("DOWN" if base_uri else "UP")
-    # Set response to non operational for first polling attempt
-    # Set response to success in second polling attempt
-    # Set response to success for querying results
-    mock_get.side_effect = SideEffect(
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_non_operational,
-        mocked_requests_get_success,
-        mocked_requests_get_success,
-        mocked_requests_get_success,
-    )
-    # Set response to sucess for posting job
-    mock_post.side_effect = mocked_requests_post_success
-    # Necessary for expected results to match
-    np.random.seed(111)
-    with (
-        pytest.warns(UserWarning, match="QPU not operational, will try again in")
-        if base_uri
-        else nullcontext()
-    ):
-        result = qpu.submit(job_from_seq)
-    if base_uri:
-        exp_result = [
-            (Sample(probability=0.999, state=0), "|000>"),
-            (Sample(probability=0.001, state=4), "|100>"),
-        ]
-    else:
-        exp_result = [
-            (Sample(probability=0.9995, state=0), "|000>"),
-            (Sample(probability=0.0005, state=1), "|001>"),
-        ]
-    compare_results_raw_data(result.raw_data, exp_result)
+        with mock.patch(
+            "pulser_myqlm.fresnel_qpu.QPU_POLLING_TIMEOUT_SECONDS", polling_timeout
+        ):
+            _test_non_operational_qpu()
 
 
 @mock.patch(

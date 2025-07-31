@@ -6,6 +6,7 @@ import logging
 import time
 import warnings
 from typing import cast
+from datetime import datetime
 
 import requests
 from pulser.devices._device_datacls import Device
@@ -19,6 +20,7 @@ from pulser_myqlm.constants import (
     JOB_POLLING_INTERVAL_SECONDS,
     QPU_POLLING_INTERVAL_SECONDS,
     TEMP_DEVICE,
+    QPU_POLLING_TIMEOUT_SECONDS,
 )
 from pulser_myqlm.helpers.deserialize_other import deserialize_other
 from pulser_myqlm.helpers.requests import JobInfo, PasqalQPUClient
@@ -119,9 +121,26 @@ class FresnelQPU(QPUHandler):
     def _poll_system(self) -> None:
         """Polls QPU until it is operational."""
         msg = f"QPU not operational, will try again in {QPU_POLLING_INTERVAL_SECONDS}s"
+        polling_start = datetime.now()
         while not self.is_operational:
+            logger.warning(msg)
             warnings.warn(msg, UserWarning)
             time.sleep(QPU_POLLING_INTERVAL_SECONDS)
+            if (
+                QPU_POLLING_TIMEOUT_SECONDS != -1
+                and (datetime.now() - polling_start).total_seconds()
+                > QPU_POLLING_TIMEOUT_SECONDS
+            ):
+                raise QPUException(
+                    ErrorType.ABORT,
+                    message=(
+                        "QPU not operational for more than "
+                        f"{QPU_POLLING_TIMEOUT_SECONDS} seconds. Aborting. "
+                        "Submit when the QPU's status is 'UP'. "
+                        "Check `get_specs().meta_data['operational_status']`."
+                    ),
+                )
+        logger.info("QPU is operational.")
 
     def serve(
         self,
@@ -146,7 +165,6 @@ class FresnelQPU(QPUHandler):
                     a maximum of 10 running threads
                 "fork": multi-process server, each connection runs in a new process
         """
-        self._poll_system()
         super().serve(port, host_ip, server_type, **kwargs)
 
     def _wait_job_results(self, job_info: JobInfo) -> JobInfo:
@@ -157,7 +175,8 @@ class FresnelQPU(QPUHandler):
                 message="Results are only available if base_uri is defined",
             )
         job_id = job_info.get_id()
-        while job_info.get_status() not in ["ERROR", "DONE"]:
+        while (status := job_info.get_status()) not in ["ERROR", "DONE"]:
+            logger.info(f"Current Job {job_id} Status: {status}")
             # We can't know how long processing the job will take on the QPU
             # We want to get the result, no matter QPU's availability
             # We poll the status of the job until termination ("ERROR" or "DONE")
@@ -303,6 +322,7 @@ class FresnelQPU(QPUHandler):
         )
 
         job_info = self._wait_job_results(job_info)
-
+        counter = job_info.get_counter_result()
+        logger.info(f"Job #{job_info.get_id()} done, got{counter}.")
         # Convert the output of the API into a MyQLM Result
-        return IsingAQPU.convert_samples_to_result(job_info.get_counter_result())
+        return IsingAQPU.convert_samples_to_result(counter)
