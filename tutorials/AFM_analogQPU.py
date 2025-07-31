@@ -13,9 +13,7 @@ conn = QLMaaSConnection()
 QPU = conn.get_qpu("qat.qpus:AnalogQPU")()  # TODO: Replace by QPU's name on Qaptiva
 
 # Get the Device implemented by the QPU from the QPU specs
-FRESNEL_DEVICE = Device.from_abstract_repr(
-    FresnelQPU(None).get_specs().description
-)
+FRESNEL_DEVICE = Device.from_abstract_repr(FresnelQPU(None).get_specs().description)
 print("Using the Device:", "\n")
 FRESNEL_DEVICE.print_specs()
 # Simulation parameters
