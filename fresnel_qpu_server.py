@@ -82,14 +82,12 @@ if __name__ == "__main__":
             "as an argument."
         )
     # a FresnelQPU connected to a remote VM
-    logger.info("Connecting to IP:", args.qpu_ip, ", PORT:", args.qpu_port)
+    logger.info(f"Connecting to IP:{args.qpu_ip}, PORT:{args.qpu_port}")
     fresnel_qpu = FresnelQPU(f"http://{args.qpu_ip}:{args.qpu_port}/api", version="v1")
-    logger.info("Connected. QPU is operational:", fresnel_qpu.is_operational)
+    logger.info(f"Connected. QPU is operational: {fresnel_qpu.is_operational}")
 
     # Deploy the QPU on a port and ip
-    logger.info(
-        "Creating a server on IP: ", args.server_ip, ", PORT:", args.server_port
-    )
+    logger.info(f"Creating a server on IP: {args.server_ip}, PORT:, {args.server_port}")
     fresnel_qpu.serve(args.server_port, args.server_ip)
 
     # Connect to this server remotely with RemoteQPU(SERVER_PORT, SERVER_IP)
