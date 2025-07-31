@@ -4,21 +4,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pulser import InterpolatedWaveform, Pulse, Sequence
 from pulser.devices import Device
-from qat.qpus import RemoteQPU
+from qat.qlmaas import QLMaaSConnection
 
 from pulser_myqlm import IsingAQPU
 
 # Connect to the QPU
-PORT = 1234
-IP = "127.0.0.1"  # TODO: Modify this IP
-QPU = RemoteQPU(PORT, IP)
+conn = QLMaaSConnection()
+QPU = conn.get_qpu("qat.qpus:PasqalQPU")()  # TODO: Replace by QPU's name on Qaptiva
 
-print("Connected")
 # Get the Device implemented by the QPU from the QPU specs
 FRESNEL_DEVICE = Device.from_abstract_repr(QPU.get_specs().description)
 print("Using the Device:", "\n")
 FRESNEL_DEVICE.print_specs()
-
 print(QPU.get_specs().meta_data)
 # Simulation parameters
 NBSHOTS = 0  # must be 0 for AnalogQPU
@@ -63,7 +60,9 @@ seq.add(interpolated_pulse, "ising")
 # Simulate the Sequence on the QPU
 job = IsingAQPU.convert_sequence_to_job(seq, nbshots=NBSHOTS, modulation=MODULATION)
 
-results = QPU.submit(job)
+async_results = QPU.submit(job)
+
+results = async_results.join()
 
 # Print the most interesting samples
 for sample in results:

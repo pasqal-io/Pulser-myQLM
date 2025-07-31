@@ -2,27 +2,19 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pulser import InterpolatedWaveform, Pulse, Sequence
-from pulser.devices import Device
-from qat.qpus import RemoteQPU
+from pulser import InterpolatedWaveform, Pulse, QPUBackend, Sequence
+from pulser.backend.remote import JobParams
 
-from pulser_myqlm import IsingAQPU
+from pulser_myqlm import PulserQLMConnection
 
 # Connect to the QPU
-PORT = 1234
-IP = "127.0.0.1"  # TODO: Modify this IP
-QPU = RemoteQPU(PORT, IP)
+conn = PulserQLMConnection()
 
-print("Connected")
 # Get the Device implemented by the QPU from the QPU specs
-FRESNEL_DEVICE = Device.from_abstract_repr(QPU.get_specs().description)
+FRESNEL_DEVICE = conn.fetch_available_devices()["qat.qpus:PasqalQPU"]
 print("Using the Device:", "\n")
 FRESNEL_DEVICE.print_specs()
 
-print(QPU.get_specs().meta_data)
-# Simulation parameters
-NBSHOTS = 0  # must be 0 for AnalogQPU
-MODULATION = False  # Whether or not to use Modulated Sequence in the simulation
 # Simulation
 reg_layout = FRESNEL_DEVICE.calibrated_register_layouts[
     "TriangularLatticeLayout(61, 5.0µm)"
@@ -61,32 +53,13 @@ seq.declare_channel("ising", "rydberg_global")
 seq.add(interpolated_pulse, "ising")
 
 # Simulate the Sequence on the QPU
-job = IsingAQPU.convert_sequence_to_job(seq, nbshots=NBSHOTS, modulation=MODULATION)
+qpu = QPUBackend(seq, connection=conn)
 
-results = QPU.submit(job)
+remote_results = qpu.run([JobParams(runs=1000, variables=[])], wait=True)
+count = remote_results.get_available_results().values()[0]
 
 # Print the most interesting samples
-for sample in results:
-    if sample.probability > 0.01:
-        print(sample.state, sample.probability)
-
-
-# Plot these results
-def get_samples_from_result(result, n_qubits):
-    """Converting the MyQLM Results into Pulser Samples."""
-    samples = {}
-    for sample in result.raw_data:
-        if len(sample.state.bitstring) > n_qubits:
-            raise ValueError(
-                f"State {sample.state} is incompatible with number of qubits"
-                f" declared {n_qubits}."
-            )
-        counts = sample.probability
-        samples[sample.state.bitstring.zfill(n_qubits)] = counts
-    return samples
-
-
-count = get_samples_from_result(results, N_atoms)
+print("Obtained samples:", count)
 
 most_freq = {k: v for k, v in count.items() if v > 10 / 1000}
 plt.bar(list(most_freq.keys()), list(most_freq.values()))

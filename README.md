@@ -72,6 +72,15 @@ python fresnel_qpu_server.py --help
 
 Behavior when QPU is not operational is configurable with the env var `QPU_POLLING_TIMEOUT_SECONDS`. By default, the value is -1 which means the process will holds the current jobs and retry forever. Setting the variable to 0 will make all jobs sent to the QPU to fail immediately if the QPU is down.
 
+## Testing
+
+Unitary tests are developed in the ./tests folder.
+Non-regression tests are provided in the ./tutorials folder as python scripts. Here is how to check the correct deloyment of a QPU in a Qaptiva Stack using pulser-myqlm:
+- AFM_direct.py: Assume you have a QPU installed accessible at a given IP and PORT. Use this script to submit a Sequence preparing an AFM state.
+- AFM_remote.py: Assume you have deployed a FresnelQPU server, that is able to submit myQLM Jobs to the QPU, at a given IP and port (for instance, using `fresnel_qpu_server.py`). Specify the IP and port of this server in this script to submit a Sequence preparing an AFM state.
+- AFM_qaptiva.py: Assume you have installed in your Qaptiva a QLMaaSQPU named PasqalQPU, that is connected with the QPU (either via a FresnelQPU or via a RemoteQPU connected to a FresnelQPU server for instance). Use this script to submit a Sequence preparing an AFM state to the QPU.
+- AFM_PulserQLMConnection.py: Assume the same installation as in the AFM_qaptiva.py. Test the correct submission of a Pulser Sequence preparing an AFM state to the QPU, using the PulserQLMConnection. 
+
 ## Continuous Integration Requirements
 
 We enforce some continuous integration standards. Make sure you follow them, otherwise your pull requests will be blocked until you fix them. To check if your changes pass all CI tests before you make the PR, you'll need additional packages, which you can install by running
