@@ -19,7 +19,7 @@ FRESNEL_DEVICE.print_specs()
 reg_layout = FRESNEL_DEVICE.calibrated_register_layouts[
     "TriangularLatticeLayout(61, 5.0µm)"
 ]
-Omega_max = 0.9 * 2 * FRESNEL_DEVICE.rabi_from_blockade(5.0)  # Spacing between atoms
+Omega_max = 0.8 * 2 * FRESNEL_DEVICE.rabi_from_blockade(5.0)  # Spacing between atoms
 
 U = Omega_max / 2.0
 

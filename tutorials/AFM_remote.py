@@ -9,10 +9,11 @@ from qat.qpus import RemoteQPU
 from pulser_myqlm import IsingAQPU
 
 # Connect to the QPU
-PORT = 1234
+PORT = 1235
 IP = "127.0.0.1"  # TODO: Modify this IP
 QPU = RemoteQPU(PORT, IP)
 
+print("Connected")
 # Get the Device implemented by the QPU from the QPU specs
 FRESNEL_DEVICE = Device.from_abstract_repr(QPU.get_specs().description)
 print("Using the Device:", "\n")
@@ -26,7 +27,7 @@ MODULATION = False  # Whether or not to use Modulated Sequence in the simulation
 reg_layout = FRESNEL_DEVICE.calibrated_register_layouts[
     "TriangularLatticeLayout(61, 5.0µm)"
 ]
-Omega_max = 0.9 * 2 * FRESNEL_DEVICE.rabi_from_blockade(5.0)  # Spacing between atoms
+Omega_max = 0.8 * 2 * FRESNEL_DEVICE.rabi_from_blockade(5.0)  # Spacing between atoms
 
 U = Omega_max / 2.0
 
