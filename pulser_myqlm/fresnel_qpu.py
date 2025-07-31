@@ -7,6 +7,7 @@ import time
 import warnings
 from datetime import datetime
 from typing import cast
+from datetime import datetime
 
 import requests
 from pulser.devices._device_datacls import Device
@@ -21,6 +22,7 @@ from pulser_myqlm.constants import (
     QPU_POLLING_INTERVAL_SECONDS,
     QPU_POLLING_TIMEOUT_SECONDS,
     TEMP_DEVICE,
+    QPU_POLLING_TIMEOUT_SECONDS,
 )
 from pulser_myqlm.helpers.deserialize_other import deserialize_other
 from pulser_myqlm.helpers.requests import JobInfo, PasqalQPUClient

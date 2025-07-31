@@ -9,7 +9,7 @@ from qat.qpus import RemoteQPU
 from pulser_myqlm import IsingAQPU
 
 # Connect to the QPU
-PORT = 1235
+PORT = 1234
 IP = "127.0.0.1"  # TODO: Modify this IP
 QPU = RemoteQPU(PORT, IP)
 
