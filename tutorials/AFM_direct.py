@@ -2,10 +2,10 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pulser import Pulse, Sequence, InterpolatedWaveform
+from pulser import InterpolatedWaveform, Pulse, Sequence
 from pulser.devices import Device
 
-from pulser_myqlm import IsingAQPU, FresnelQPU
+from pulser_myqlm import FresnelQPU, IsingAQPU
 
 # Connect to the QPU
 PORT = 1234

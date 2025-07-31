@@ -2,7 +2,7 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pulser import Pulse, Sequence, InterpolatedWaveform, QPUBackend
+from pulser import InterpolatedWaveform, Pulse, QPUBackend, Sequence
 from pulser.backend.remote import JobParams
 
 from pulser_myqlm import PulserQLMConnection

@@ -3,6 +3,7 @@
 """Connects to a Pasqal QPU and deploys a MyQLM server using FresnelQPU."""
 import argparse
 import logging
+
 from pulser_myqlm import FresnelQPU
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pulser import Pulse, Sequence, InterpolatedWaveform
+from pulser import InterpolatedWaveform, Pulse, Sequence
 from pulser.devices import Device
 from qat.qpus import RemoteQPU
 

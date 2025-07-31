@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 import time
 import warnings
-from typing import cast
 from datetime import datetime
+from typing import cast
 
 import requests
 from pulser.devices._device_datacls import Device
@@ -19,8 +19,8 @@ from pulser_myqlm.constants import (
     DEFAULT_NUMBER_OF_SHOTS,
     JOB_POLLING_INTERVAL_SECONDS,
     QPU_POLLING_INTERVAL_SECONDS,
-    TEMP_DEVICE,
     QPU_POLLING_TIMEOUT_SECONDS,
+    TEMP_DEVICE,
 )
 from pulser_myqlm.helpers.deserialize_other import deserialize_other
 from pulser_myqlm.helpers.requests import JobInfo, PasqalQPUClient
