@@ -76,7 +76,7 @@ class PasqalQPUClient:
 
     def create_job(self, nb_run: int, abstract_sequence: str) -> JobInfo:
         """Create a Job on the QPU to run an abstract Sequence nb_run times."""
-        # NOTE: by default, submitting a job to the QPU cancels the previous job submitted
+        # By default, submitting a job to the QPU cancels the previous job submitted
         payload = {"nb_run": nb_run, "pulser_sequence": abstract_sequence}
         response = self._post_backoff("/jobs", payload)
         return JobInfo(response.json()["data"])
