@@ -38,6 +38,10 @@ class JobInfo:
         """When job is done, get the result as a counter."""
         return cast(dict[str, int], json.loads(self.job_info["result"])["counter"])
 
+    def get_program_id(self) -> int:
+        """Returns the program ID associated with the Job."""
+        return cast(int, self.job_info["program_id"])
+
 
 class PasqalQPUClient:
     """A client to communicate with the QPU's API.
@@ -72,9 +76,14 @@ class PasqalQPUClient:
 
     def create_job(self, nb_run: int, abstract_sequence: str) -> JobInfo:
         """Create a Job on the QPU to run an abstract Sequence nb_run times."""
+        # NOTE: By default, cancel_previous_jobs=True
         payload = {"nb_run": nb_run, "pulser_sequence": abstract_sequence}
         response = self._post_backoff("/jobs", payload)
         return JobInfo(response.json()["data"])
+
+    def cancel_job(self, job_info: JobInfo) -> None:
+        """Terminates the execution of a given job ID."""
+        self._delete_backoff(f"/programs/{job_info.get_program_id()}")
 
     @backoff_decorator_qpu
     def _get_backoff(self, suffix: str) -> requests.Response:
@@ -113,5 +122,19 @@ class PasqalQPUClient:
             The requests.Response returned by the POST request.
         """
         response = requests.post(self.base_uri + suffix, json=data)
+        response.raise_for_status()
+        return response
+
+    @backoff_decorator_qpu
+    def _delete_backoff(self, suffix: str) -> requests.Response:
+        """Sends a DELETE request to base_uri + suffix with backoff.
+
+        Arg:
+            suffix: The suffix to add after base_uri for the request.
+
+        Returns:
+            The requests.Response returned by the DELETE request.
+        """
+        response = requests.delete(self.base_uri + suffix)
         response.raise_for_status()
         return response
