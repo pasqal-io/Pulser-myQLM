@@ -325,15 +325,16 @@ class FresnelQPU(QPUHandler):
                 ErrorType.NOT_SIMULATABLE,
                 message=f"Too many runs asked. Max number of runs is {max_nb_run}.",
             )
+        abstr_seq = seq.to_abstract_repr()
         if self._qpu_client is None:
-            logger.info("Simulating Sequence.")
+            logger.info(f"Simulating Sequence: {abstr_seq}.")
             pulser_results = simulate_seq(seq, modulation, nb_run)
             myqlm_result = IsingAQPU.convert_samples_to_result(pulser_results)
             logger.info(f"Sequence succesfully simulated. Got {pulser_results}.")
             return myqlm_result
-        logger.info("Submitting Sequence.")
+        logger.info(f"Submitting Sequence: {abstr_seq}.")
         try:
-            job_info = self._qpu_client.create_job(nb_run, seq.to_abstract_repr())
+            job_info = self._qpu_client.create_job(nb_run, abstr_seq)
         except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.ABORT, message=f"Could not create job: Got {repr(e)}"
