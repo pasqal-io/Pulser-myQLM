@@ -181,8 +181,6 @@ class FresnelQPU(QPUHandler):
         polling_start = datetime.now()
         while (status := job_info.get_status()) not in ["ERROR", "DONE"]:
             logger.info(f"Current Job {job_id} Status: {status}")
-            # We can't know how long processing the job will take on the QPU
-            # We want to get the result, no matter QPU's availability
             # We poll the status of the job until termination ("ERROR" or "DONE")
             try:
                 # No Backoff to handle errors separately

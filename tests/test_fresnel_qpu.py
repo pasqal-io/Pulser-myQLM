@@ -128,7 +128,8 @@ def mocked_requests_get_error(*args, **kwargs):
     mockresponse = {
         OPERATIONAL_URL: MockResponse({"data": {"operational_status": "UP"}}, 200),
         JOB_URL: MockResponse(
-            {"data": {"status": "ERROR", "uid": JOB_UID, "program_id": JOB_UID}}, 200
+            {"data": {"status": "ERROR", "uid": JOB_UID, "program_id": PROGRAM_UID}},
+            200,
         ),
         SYSTEM_URL: SYSTEM_REPONSE,
     }
