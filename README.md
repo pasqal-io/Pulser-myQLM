@@ -70,7 +70,26 @@ python fresnel_qpu_server.py --help
 
 #### QPU interruption
 
-Behavior when QPU is not operational is configurable with the env var `QPU_POLLING_TIMEOUT_SECONDS`. By default, the value is -1 which means the process will holds the current jobs and retry forever. Setting the variable to 0 will make all jobs sent to the QPU to fail immediately if the QPU is down.
+Behavior when QPU is not operational is configurable with the env var `QPU_POLLING_TIMEOUT_SECONDS`. By default, the value is -1 which means `FresnelQPU` will hold any submitted MyQLM Job and retry submitting it to the QPU forever. Setting the variable to 0 will make any job sent to `FresnelQPU` to fail immediately if the QPU is down.
+
+To deploy a FresnelQPU server with a value for `QPU_POLLING_TIMEOUT_SECONDS`:
+
+```shell
+QPU_POLLING_TIMEOUT_SECONDS=-1 python fresnel_qpu_server.py ...
+```
+
+#### Job interruption
+
+Once a Job is submitted to the QPU, the behavior to handle its execution is configurable with the env var `JOB_POLLING_TIMEOUT_SECONDS`. By default, the value is -1 which means `FresnelQPU` will wait forever for the Job to finish on the QPU (a job can finish with a result or in error). Setting the variable to a value greater than 0 will terminate this wait after this value. The job is then canceled on the QPU and an error message is raised to the user.
+
+To deploy a FresnelQPU server with a value for `JOB_POLLING_TIMEOUT_SECONDS` (can be combined with other env variables):
+
+```shell
+JOB_POLLING_TIMEOUT_SECONDS=-1 python fresnel_qpu_server.py ...
+```
+
+> [!NOTE]
+> When a new job is submitted to the QPU, it cancels all the previously running jobs. 
 
 ## Testing
 
