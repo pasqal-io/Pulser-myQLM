@@ -205,7 +205,6 @@ class FresnelQPU(QPUHandler):
                     ErrorType.NONERESULT,
                     f"An error occured fetching your results: {repr(e)}",
                 )
-            time.sleep(JOB_POLLING_INTERVAL_SECONDS)
             if (
                 JOB_POLLING_TIMEOUT_SECONDS != -1
                 and (datetime.now() - polling_start).total_seconds()
@@ -223,6 +222,8 @@ class FresnelQPU(QPUHandler):
                         " seconds. Aborting. Try re-submitting Job or Contact support."
                     ),
                 )
+            time.sleep(JOB_POLLING_INTERVAL_SECONDS)
+
         # Check that the job submission went well
         if job_info.get_status() == "ERROR":
             raise QPUException(

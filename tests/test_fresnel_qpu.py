@@ -90,6 +90,10 @@ def mocked_requests_get_success(*args, **kwargs):
             },
             200,
         ),
+        PROGRAM_URL: MockResponse(
+            {"data": {"status": "ERROR", "program_id": PROGRAM_UID}},
+            200,
+        ),
         SYSTEM_URL: SYSTEM_REPONSE,
     }
     url = args[0] if args else kwargs["url"]
@@ -115,6 +119,10 @@ def mocked_requests_get_non_operational(*args, **kwargs):
             {"data": {"status": "ERROR", "uid": JOB_UID, "program_id": PROGRAM_UID}},
             200,
         ),
+        PROGRAM_URL: MockResponse(
+            {"data": {"status": "ERROR", "program_id": PROGRAM_UID}},
+            200,
+        ),
         SYSTEM_URL: SYSTEM_REPONSE,
     }
     url = args[0] if args else kwargs["url"]
@@ -132,6 +140,10 @@ def mocked_requests_get_error(*args, **kwargs):
             200,
         ),
         SYSTEM_URL: SYSTEM_REPONSE,
+        PROGRAM_URL: MockResponse(
+            {"data": {"status": "ERROR", "program_id": PROGRAM_UID}},
+            200,
+        ),
     }
     url = args[0] if args else kwargs["url"]
     if url in mockresponse:
@@ -198,7 +210,7 @@ def mocked_requests_delete_success(*args, **kwargs):
         PROGRAM_URL: MockResponse(
             {
                 "data": {
-                    "status": "ERROR",
+                    "status": "PENDING",
                     "program_id": PROGRAM_UID,
                 }
             },
@@ -211,6 +223,35 @@ def mocked_requests_delete_success(*args, **kwargs):
         return mockresponse[url]
     return MockResponse(None, 404)
 
+def mocked_requests_delete_fail(*args, **kwargs):
+    """Mocks a requests.delete response from a working system finished jobs."""
+    mockresponse = {
+        OPERATIONAL_URL: MockResponse({"data": {"operational_status": "UP"}}, 200),
+        JOB_URL: MockResponse(
+            {
+                "data": {
+                    "status": "DONE",
+                    "uid": JOB_UID,
+                    "program_id": PROGRAM_UID,
+                }
+            },
+            200,
+        ),
+        PROGRAM_URL: MockResponse(
+            {
+                "data": {
+                    "status": "UNKNOWN_TERMINATION_STATUS",
+                    "program_id": PROGRAM_UID,
+                }
+            },
+            400,
+        ),
+        SYSTEM_URL: SYSTEM_REPONSE,
+    }
+    url = args[0] if args else kwargs["url"]
+    if url in mockresponse:
+        return mockresponse[url]
+    return MockResponse(None, 404)
 
 def _switch_seq_device(seq, device):
     if device != TEMP_DEVICE:
@@ -699,11 +740,12 @@ def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq):
     "requests.post",
     side_effect=mocked_requests_post_success,
 )
-@mock.patch("requests.delete", side_effect=mocked_requests_delete_success)
+@mock.patch("requests.delete")
 @pytest.mark.parametrize("remote_fresnel", [False, True])
 def test_job_polling_success(
     mock_delete, mock_post, mock_get, remote_fresnel, schedule_seq
 ):
+    mock_delete.side_effect = mocked_requests_delete_success
     mock_get.side_effect = mocked_requests_get_success
     global PORT
     fresnel_qpu = FresnelQPU(base_uri=BASE_URI)
@@ -723,6 +765,14 @@ def test_job_polling_success(
     result = fresnel_qpu._wait_job_results(job_response)
     assert result.get_status() == "DONE"
     # Fails if a different value is set for the timeout
+    mock_get.side_effect = mocked_requests_get_running
+    with mock.patch("pulser_myqlm.fresnel_qpu.JOB_POLLING_TIMEOUT_SECONDS", 0):
+        with pytest.raises(
+            QPUException, match="Job did not finish in less than 0 seconds. Aborting."
+        ):
+            fresnel_qpu._wait_job_results(job_response)
+    # Same error if it tries to cancel an already finished job
+    mock_delete.side_effect = mocked_requests_delete_fail
     mock_get.side_effect = SideEffect(*polling_behaviour)
     with mock.patch("pulser_myqlm.fresnel_qpu.JOB_POLLING_TIMEOUT_SECONDS", 0):
         with pytest.raises(
