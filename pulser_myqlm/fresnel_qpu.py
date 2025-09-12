@@ -18,6 +18,7 @@ from qat.core.qpu import QPUHandler
 from pulser_myqlm.constants import (
     DEFAULT_NUMBER_OF_SHOTS,
     JOB_POLLING_INTERVAL_SECONDS,
+    JOB_POLLING_TIMEOUT_SECONDS,
     QPU_POLLING_INTERVAL_SECONDS,
     QPU_POLLING_TIMEOUT_SECONDS,
     TEMP_DEVICE,
@@ -58,7 +59,9 @@ class FresnelQPU(QPUHandler):
             None if base_uri is None else PasqalQPUClient(base_uri, version)
         )
         # Check that base URI is correct and communication with QPU works
-        self.is_operational
+        operational = self.is_operational
+        logger.info(f"Succesfully connected to {self.base_uri}.")
+        logger.info(f"QPU is {'' if operational else 'not'} operational.")
 
     @property
     def base_uri(self) -> None | str:
@@ -175,10 +178,9 @@ class FresnelQPU(QPUHandler):
                 message="Results are only available if base_uri is defined",
             )
         job_id = job_info.get_id()
+        polling_start = datetime.now()
         while (status := job_info.get_status()) not in ["ERROR", "DONE"]:
             logger.info(f"Current Job {job_id} Status: {status}")
-            # We can't know how long processing the job will take on the QPU
-            # We want to get the result, no matter QPU's availability
             # We poll the status of the job until termination ("ERROR" or "DONE")
             try:
                 # No Backoff to handle errors separately
@@ -202,6 +204,23 @@ class FresnelQPU(QPUHandler):
                 raise QPUException(
                     ErrorType.NONERESULT,
                     f"An error occured fetching your results: {repr(e)}",
+                )
+            if (
+                JOB_POLLING_TIMEOUT_SECONDS != -1
+                and (datetime.now() - polling_start).total_seconds()
+                > JOB_POLLING_TIMEOUT_SECONDS
+            ):
+                logger.info(
+                    f"Job {job_id} timed out. Terminating its associated program "
+                    f"{job_info.get_program_id()}."
+                )
+                self._qpu_client.cancel_job(job_info)
+                raise QPUException(
+                    ErrorType.ABORT,
+                    message=(
+                        f"Job did not finish in less than {JOB_POLLING_TIMEOUT_SECONDS}"
+                        " seconds. Aborting. Try re-submitting Job or Contact support."
+                    ),
                 )
             time.sleep(JOB_POLLING_INTERVAL_SECONDS)
 
@@ -307,12 +326,16 @@ class FresnelQPU(QPUHandler):
                 ErrorType.NOT_SIMULATABLE,
                 message=f"Too many runs asked. Max number of runs is {max_nb_run}.",
             )
+        abstr_seq = seq.to_abstract_repr()
         if self._qpu_client is None:
+            logger.info(f"Simulating Sequence: {abstr_seq}.")
             pulser_results = simulate_seq(seq, modulation, nb_run)
             myqlm_result = IsingAQPU.convert_samples_to_result(pulser_results)
+            logger.info(f"Sequence succesfully simulated. Got {pulser_results}.")
             return myqlm_result
+        logger.info(f"Submitting Sequence: {abstr_seq}.")
         try:
-            job_info = self._qpu_client.create_job(nb_run, seq.to_abstract_repr())
+            job_info = self._qpu_client.create_job(nb_run, abstr_seq)
         except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.ABORT, message=f"Could not create job: Got {repr(e)}"

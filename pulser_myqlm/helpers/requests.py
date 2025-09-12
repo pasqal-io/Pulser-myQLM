@@ -9,14 +9,14 @@ import requests
 
 from pulser_myqlm.constants import MAX_CONNECTION_ATTEMPTS_QPU
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 backoff_decorator_qpu = backoff.on_exception(
     backoff.fibo,
     requests.exceptions.RequestException,
     max_tries=MAX_CONNECTION_ATTEMPTS_QPU,
     max_value=60,
-    logger=LOGGER,
+    logger=logger,
 )
 
 
@@ -37,6 +37,10 @@ class JobInfo:
     def get_counter_result(self) -> dict[str, int]:
         """When job is done, get the result as a counter."""
         return cast(dict[str, int], json.loads(self.job_info["result"])["counter"])
+
+    def get_program_id(self) -> int:
+        """Returns the program ID associated with the Job."""
+        return cast(int, self.job_info["program_id"])
 
 
 class PasqalQPUClient:
@@ -70,11 +74,41 @@ class PasqalQPUClient:
         response = (self._get if no_backoff else self._get_backoff)(f"/jobs/{job_id}")
         return JobInfo(response.json()["data"])
 
+    def get_program_status(self, program_id: int) -> str:
+        """Gets the status of a program."""
+        response = self._get_backoff(f"/programs/{program_id}")
+        return json.dumps(response.json()["data"]["status"])
+
     def create_job(self, nb_run: int, abstract_sequence: str) -> JobInfo:
         """Create a Job on the QPU to run an abstract Sequence nb_run times."""
+        # By default, submitting a job to the QPU cancels the previous job submitted
         payload = {"nb_run": nb_run, "pulser_sequence": abstract_sequence}
         response = self._post_backoff("/jobs", payload)
         return JobInfo(response.json()["data"])
+
+    def cancel_job(self, job_info: JobInfo) -> None:
+        """Terminates the execution of a given job ID."""
+        program_id = job_info.get_program_id()
+        try:
+            program_status = self.get_program_status(program_id)
+            logger.info(f"Program {program_id} has status {program_status}.")
+            if program_status not in [
+                '"ABORTED"',
+                '"ABORTING"',
+                '"ERROR"',
+                '"MISSING_CALIBRATION"',
+                '"DONE"',
+                '"INVALID"',
+            ]:
+                self._delete_backoff(f"/programs/{program_id}")
+                logger.info(
+                    f"Program {program_id} is now "
+                    f"{self.get_program_status(program_id)}."
+                )
+        except Exception:
+            logger.exception(
+                f"An error occured while trying to cancel program {program_id}."
+            )
 
     @backoff_decorator_qpu
     def _get_backoff(self, suffix: str) -> requests.Response:
@@ -113,5 +147,19 @@ class PasqalQPUClient:
             The requests.Response returned by the POST request.
         """
         response = requests.post(self.base_uri + suffix, json=data)
+        response.raise_for_status()
+        return response
+
+    @backoff_decorator_qpu
+    def _delete_backoff(self, suffix: str) -> requests.Response:
+        """Sends a DELETE request to base_uri + suffix with backoff.
+
+        Arg:
+            suffix: The suffix to add after base_uri for the request.
+
+        Returns:
+            The requests.Response returned by the DELETE request.
+        """
+        response = requests.delete(self.base_uri + suffix)
         response.raise_for_status()
         return response
