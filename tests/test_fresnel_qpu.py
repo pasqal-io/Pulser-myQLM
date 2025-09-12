@@ -226,33 +226,7 @@ def mocked_requests_delete_success(*args, **kwargs):
 
 def mocked_requests_delete_fail(*args, **kwargs):
     """Mocks a requests.delete response from a working system finished jobs."""
-    mockresponse = {
-        OPERATIONAL_URL: MockResponse({"data": {"operational_status": "UP"}}, 200),
-        JOB_URL: MockResponse(
-            {
-                "data": {
-                    "status": "DONE",
-                    "uid": JOB_UID,
-                    "program_id": PROGRAM_UID,
-                }
-            },
-            200,
-        ),
-        PROGRAM_URL: MockResponse(
-            {
-                "data": {
-                    "status": "UNKNOWN_TERMINATION_STATUS",
-                    "program_id": PROGRAM_UID,
-                }
-            },
-            400,
-        ),
-        SYSTEM_URL: SYSTEM_REPONSE,
-    }
-    url = args[0] if args else kwargs["url"]
-    if url in mockresponse:
-        return mockresponse[url]
-    return MockResponse(None, 404)
+    return MockResponse({}, 400)
 
 
 def _switch_seq_device(seq, device):
@@ -775,7 +749,6 @@ def test_job_polling_success(
             fresnel_qpu._wait_job_results(job_response)
     # Same error if it tries to cancel an already finished job
     mock_delete.side_effect = mocked_requests_delete_fail
-    mock_get.side_effect = SideEffect(*polling_behaviour)
     with mock.patch("pulser_myqlm.fresnel_qpu.JOB_POLLING_TIMEOUT_SECONDS", 0):
         with pytest.raises(
             QPUException, match="Job did not finish in less than 0 seconds. Aborting."
