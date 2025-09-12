@@ -223,6 +223,7 @@ def mocked_requests_delete_success(*args, **kwargs):
         return mockresponse[url]
     return MockResponse(None, 404)
 
+
 def mocked_requests_delete_fail(*args, **kwargs):
     """Mocks a requests.delete response from a working system finished jobs."""
     mockresponse = {
@@ -252,6 +253,7 @@ def mocked_requests_delete_fail(*args, **kwargs):
     if url in mockresponse:
         return mockresponse[url]
     return MockResponse(None, 404)
+
 
 def _switch_seq_device(seq, device):
     if device != TEMP_DEVICE:
