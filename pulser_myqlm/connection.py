@@ -73,20 +73,20 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
         timeout: int | None = None,
         **kwargs: dict[str, typing.Any],
     ) -> None:
-        self._qlm_client = QLMClient(
-            qat.qlmaas.QLMaaSConnection(
-                hostname,
-                port,
-                authentication,
-                certificate,
-                key,
-                check_host,
-                proxy_host,
-                proxy_port,
-                timeout,
-                **kwargs,
-            )
+        kwargs.update(
+            {
+                "hostname": hostname,
+                "port": port,
+                "authentication": authentication,
+                "certificate": certificate,
+                "key": key,
+                "check_host": check_host,
+                "proxy_host": proxy_host,
+                "proxy_port": proxy_port,
+                "timeout": timeout,
+            }
         )
+        self._qlm_client = QLMClient(qat.qlmaas.QLMaaSConnection(**kwargs))
 
     @property
     def qlmaas_connection(self) -> qat.qlmaas.QLMaaSConnection:
