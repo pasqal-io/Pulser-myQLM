@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
-from qat.core import Schedule
+from qat.core import Observable, Schedule
 
 
 def sample_schedule(schedule: Schedule, var_name: str = "") -> list:
@@ -26,7 +28,7 @@ def sample_schedule(schedule: Schedule, var_name: str = "") -> list:
         [drive_coeff.get_value() for drive_coeff in schedule.drive_coeffs]
     )
     drive_obs_array = np.array(schedule.drive_obs)
-    summed_schedule = np.sum(drive_coeffs_array * drive_obs_array)
+    summed_schedule = cast(Observable, np.sum(drive_coeffs_array * drive_obs_array))
     if not var_name:
         var_name = schedule.tname
     # Time expressed in µs in MyQLM expressions
