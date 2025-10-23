@@ -37,6 +37,15 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        "--server-type",
+        help="The type of server to deploy with FresnelQPU.serve. Defaults to "
+        "'simple'. From myqlm >= 1.12, can be set to 'stoppable' to configure"
+        "a timeout and interruption from the user. Check all the possible "
+        "server types in the myqlm API reference of QPUHandler.serve.",
+        default="simple",
+        type=str,
+    )
+    parser.add_argument(
         "--log-level",
         help="Sets the logging level in the default logging config",
         default="INFO",
@@ -76,7 +85,9 @@ if __name__ == "__main__":
             "Deploying a FresnelQPU using pulser-simulation as backend on IP:"
             f"{args.server_ip}, PORT:{args.server_port}."
         )
-        FresnelQPU(None).serve(args.server_port, args.server_ip)
+        FresnelQPU(None).serve(
+            args.server_port, args.server_ip, server_type=args.server_type
+        )
     elif args.qpu_ip is None or args.qpu_port is None:
         raise ValueError(
             "--qpu-ip and --qpu-port must be provided if --local is not passed "
@@ -89,6 +100,6 @@ if __name__ == "__main__":
 
     # Deploy the QPU on a port and ip
     logger.info(f"Creating a server on IP: {args.server_ip}, PORT:, {args.server_port}")
-    fresnel_qpu.serve(args.server_port, args.server_ip)
+    fresnel_qpu.serve(args.server_port, args.server_ip, server_type=args.server_type)
 
     # Connect to this server remotely with RemoteQPU(SERVER_PORT, SERVER_IP)
