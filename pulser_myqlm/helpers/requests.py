@@ -136,7 +136,7 @@ class PasqalQPUClient:
         return response
 
     @backoff_decorator_qpu
-    def _post_backoff(self, suffix: str, data: dict) -> requests.Response:
+    def _post_backoff(self, suffix: str, data: dict | None = None) -> requests.Response:
         """Sends a POST request to base_uri + suffix with backoff.
 
         Arg:
@@ -161,5 +161,11 @@ class PasqalQPUClient:
             The requests.Response returned by the DELETE request.
         """
         response = requests.delete(self.base_uri + suffix)
+        response.raise_for_status()
+        return response
+
+    @backoff_decorator_qpu
+    def _put_backoff(self, suffix: str, data: dict | None = None) -> requests.Response:
+        response = requests.put(self.base_uri + suffix, json=data)
         response.raise_for_status()
         return response
