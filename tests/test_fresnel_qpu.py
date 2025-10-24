@@ -171,7 +171,7 @@ def mocked_requests_post_success(*args, **kwargs):
     """Mocks a response to the post of a job accepted by the system."""
     job_url = "http://fresneldevice/api/latest/jobs"
     if args[0] == job_url if args else kwargs["url"] == job_url:
-        if list(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
+        if list(kwargs["json"].keys()) != ["nb_run", "pulser_sequence", "context"]:
             return MockResponse(None, 400)
         return MockResponse(
             {"data": {"status": "PENDING", "uid": JOB_UID, "program_id": PROGRAM_UID}},
@@ -184,7 +184,7 @@ def mocked_requests_post_fail(*args, **kwargs):
     """Mocks a response to the post of a job not accepted by the system."""
     job_url = "http://fresneldevice/api/latest/jobs"
     if args[0] == job_url if args else kwargs["url"] == job_url:
-        if set(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
+        if set(kwargs["json"].keys()) != ["nb_run", "pulser_sequence", "context"]:
             return MockResponse(None, 400)
         return MockResponse(
             {"data": {"status": "ERROR", "uid": JOB_UID, "program_id": PROGRAM_UID}},
@@ -727,7 +727,12 @@ def test_job_polling_success(
     fresnel_qpu = FresnelQPU(base_uri=BASE_URI)
     # Test job polling on local QPU
     response = requests.post(
-        fresnel_qpu.base_uri + "/jobs", json={"nb_run": 1, "pulser_sequence": "seq"}
+        fresnel_qpu.base_uri + "/jobs",
+        json={
+            "nb_run": 1,
+            "pulser_sequence": "seq",
+            "context": {"pasqman_job_id": "123", "batch_id": "123"},
+        },
     )
     job_response = JobInfo(response.json()["data"])
     polling_behaviour = [
@@ -811,7 +816,11 @@ def test_device_fetching_job_polling_errors(
         return
 
     post_address = fresnel_qpu.base_uri + "/jobs"
-    post_json = {"nb_run": 1, "pulser_sequence": "seq"}
+    post_json = {
+        "nb_run": 1,
+        "pulser_sequence": "seq",
+        "context": {"pasqman_job_id": "123", "batch_id": "123"},
+    }
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
     successes = [mocked_requests_get_success for _ in range(2)]
