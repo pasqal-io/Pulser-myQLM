@@ -249,6 +249,14 @@ class FresnelQPU(QPUHandler):
                 key 'abstr_seq' of the dictionary serialized in Job.schedule._other. The
                 Sequence must be compatible with FresnelDevice.
         """
+        qlmaas_job_id = (job.meta_data or {}).get("qlmaas_job_id", None)
+        if qlmaas_job_id:
+            logger.info(f"Got QLMaaSJob: {qlmaas_job_id}")
+        else:
+            logger.warning(
+                "No QLMaaSJob id associated with this job. "
+                "Fill 'qlmaas_job_id' in job.meta_data."
+            )
         if job.schedule is None:
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
@@ -342,7 +350,7 @@ class FresnelQPU(QPUHandler):
             return myqlm_result
         logger.info(f"Submitting Sequence: {abstr_seq}.")
         try:
-            job_info = self._qpu_client.create_job(nb_run, abstr_seq)
+            job_info = self._qpu_client.create_job(nb_run, abstr_seq, qlmaas_job_id)
         except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.ABORT, message=f"Could not create job: Got {repr(e)}"
