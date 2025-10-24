@@ -727,7 +727,12 @@ def test_job_polling_success(
     fresnel_qpu = FresnelQPU(base_uri=BASE_URI)
     # Test job polling on local QPU
     response = requests.post(
-        fresnel_qpu.base_uri + "/jobs", json={"nb_run": 1, "pulser_sequence": "seq"}
+        fresnel_qpu.base_uri + "/jobs",
+        json={
+            "nb_run": 1,
+            "pulser_sequence": "seq",
+            "context": {"pasqman_job_id": "123", "batch_id": "123"},
+        },
     )
     job_response = JobInfo(response.json()["data"])
     polling_behaviour = [
@@ -811,7 +816,11 @@ def test_device_fetching_job_polling_errors(
         return
 
     post_address = fresnel_qpu.base_uri + "/jobs"
-    post_json = {"nb_run": 1, "pulser_sequence": "seq"}
+    post_json = {
+        "nb_run": 1,
+        "pulser_sequence": "seq",
+        "context": {"pasqman_job_id": "123", "batch_id": "123"},
+    }
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
     successes = [mocked_requests_get_success for _ in range(2)]
