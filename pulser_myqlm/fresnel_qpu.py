@@ -11,6 +11,7 @@ from typing import cast
 import requests
 from pulser.devices._device_datacls import Device
 from pulser.json.abstract_repr.deserializer import deserialize_device
+from pulser.json.abstract_repr.serializer import serialize_abstract_sequence
 from qat.comm.exceptions.ttypes import ErrorType, QPUException
 from qat.core import HardwareSpecs, Job, Result
 from qat.core.qpu import QPUHandler
@@ -326,7 +327,9 @@ class FresnelQPU(QPUHandler):
                 ErrorType.NOT_SIMULATABLE,
                 message=f"Too many runs asked. Max number of runs is {max_nb_run}.",
             )
-        abstr_seq = seq.to_abstract_repr()
+        # Don't propagate meta_data to QPU
+        # TODO: Use seq.to_abstract_repr() once QPU upgrades pulser version
+        abstr_seq = serialize_abstract_sequence(seq, skip_validation=True)
         if self._qpu_client is None:
             logger.info(f"Simulating Sequence: {abstr_seq}.")
             pulser_results = simulate_seq(seq, modulation, nb_run)
