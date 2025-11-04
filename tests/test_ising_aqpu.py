@@ -601,7 +601,7 @@ def test_run_sequence_with_emulator(schedule_seq):
     out_analog_results = {
         sample.state.__str__(): sample.probability for sample in analog_results
     }
-    assert out_analog_results == {
+    res_dict = {
         "|000>": 0.9993103713371461,
         "|001>": 0.00023046712231041623,
         "|010>": 0.00023046712231041629,
@@ -611,6 +611,13 @@ def test_run_sequence_with_emulator(schedule_seq):
         "|110>": 1.1642314174585875e-08,
         "|111>": 6.545006475814311e-13,
     }
+    assert list(out_analog_results.keys()) == list(res_dict.keys())
+    assert np.all(
+        np.isclose(
+            list(out_analog_results.values()),
+            [res_dict[key] for key in out_analog_results],
+        )
+    )
     # Simulate the Schedule
     job_from_sch = schedule.to_job()
     sch_results = aqpu.submit(job_from_sch(u=0)).join()
@@ -618,7 +625,7 @@ def test_run_sequence_with_emulator(schedule_seq):
         sample.state.__str__(): sample.probability for sample in sch_results
     }
     # The results obtained with the schedule are close
-    assert out_sch_results == {
+    res_dict = {
         "|000>": 0.9992998383147459,
         "|001>": 0.000234336602529663,
         "|010>": 0.000234336602529663,
@@ -628,3 +635,9 @@ def test_run_sequence_with_emulator(schedule_seq):
         "|110>": 1.3149858582460543e-08,
         "|111>": 6.725982232286964e-13,
     }
+    assert list(out_sch_results.keys()) == list(res_dict.keys())
+    assert np.all(
+        np.isclose(
+            list(out_sch_results.values()), [res_dict[key] for key in out_sch_results]
+        )
+    )

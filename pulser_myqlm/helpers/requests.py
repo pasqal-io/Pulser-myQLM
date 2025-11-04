@@ -1,7 +1,10 @@
 """Functions to send requests with backoff mechanism."""
 
+from __future__ import annotations
+
 import json
 import logging
+import uuid
 from typing import Any, cast
 
 import backoff
@@ -79,10 +82,20 @@ class PasqalQPUClient:
         response = self._get_backoff(f"/programs/{program_id}")
         return json.dumps(response.json()["data"]["status"])
 
-    def create_job(self, nb_run: int, abstract_sequence: str) -> JobInfo:
-        """Create a Job on the QPU to run an abstract Sequence nb_run times."""
+    def create_job(
+        self, nb_run: int, abstract_sequence: str, batch_id: str | None = None
+    ) -> JobInfo:
+        """Create job on the QPU to run an abstract Sequence nb_run times."""
         # By default, submitting a job to the QPU cancels the previous job submitted
-        payload = {"nb_run": nb_run, "pulser_sequence": abstract_sequence}
+        pasqman_job_id = f"{uuid.uuid4()}"
+        if batch_id is None:
+            batch_id = f"pasqal-batch-{pasqman_job_id}"
+        logger.info(f"Creating pasqman_job_id {pasqman_job_id} for batch id {batch_id}")
+        payload = {
+            "nb_run": nb_run,
+            "pulser_sequence": abstract_sequence,
+            "context": {"batch_id": batch_id, "pasqman_job_id": pasqman_job_id},
+        }
         response = self._post_backoff("/jobs", payload)
         return JobInfo(response.json()["data"])
 
@@ -136,7 +149,7 @@ class PasqalQPUClient:
         return response
 
     @backoff_decorator_qpu
-    def _post_backoff(self, suffix: str, data: dict) -> requests.Response:
+    def _post_backoff(self, suffix: str, data: dict | None = None) -> requests.Response:
         """Sends a POST request to base_uri + suffix with backoff.
 
         Arg:
@@ -161,5 +174,13 @@ class PasqalQPUClient:
             The requests.Response returned by the DELETE request.
         """
         response = requests.delete(self.base_uri + suffix)
+        response.raise_for_status()
+        return response
+
+    @backoff_decorator_qpu
+    def _put_backoff(
+        self, suffix: str, data: dict | None = None
+    ) -> requests.Response:  # pragma: no cover
+        response = requests.put(self.base_uri + suffix, json=data)
         response.raise_for_status()
         return response

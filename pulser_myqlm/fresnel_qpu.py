@@ -97,8 +97,10 @@ class FresnelQPU(QPUHandler):
         except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.NONERESULT,
-                "An error occured fetching the Device implemented by the QPU. "
-                f"Got {repr(e)}",
+                message=(
+                    "An error occured fetching the Device implemented by the QPU. "
+                    f"Got {repr(e)}"
+                ),
             )
         return device
 
@@ -179,7 +181,7 @@ class FresnelQPU(QPUHandler):
             )
         job_id = job_info.get_id()
         polling_start = datetime.now()
-        while (status := job_info.get_status()) not in ["ERROR", "DONE"]:
+        while (status := job_info.get_status()) not in ["ERROR", "DONE", "CANCELED"]:
             logger.info(f"Current Job {job_id} Status: {status}")
             # We poll the status of the job until termination ("ERROR" or "DONE")
             try:
@@ -194,7 +196,7 @@ class FresnelQPU(QPUHandler):
                 if 400 <= e.response.status_code < 500:
                     raise QPUException(
                         ErrorType.NONERESULT,
-                        f"An error occured fetching your results: {repr(e)}",
+                        message=f"An error occured fetching your results: {repr(e)}",
                     )
                 logger.exception(
                     f"Job request returned a {e.response.status_code} code,"
@@ -203,7 +205,7 @@ class FresnelQPU(QPUHandler):
             except requests.exceptions.RequestException as e:  # other requests error
                 raise QPUException(
                     ErrorType.NONERESULT,
-                    f"An error occured fetching your results: {repr(e)}",
+                    message=f"An error occured fetching your results: {repr(e)}",
                 )
             if (
                 JOB_POLLING_TIMEOUT_SECONDS != -1
@@ -219,7 +221,7 @@ class FresnelQPU(QPUHandler):
                     ErrorType.ABORT,
                     message=(
                         f"Job did not finish in less than {JOB_POLLING_TIMEOUT_SECONDS}"
-                        " seconds. Aborting. Try re-submitting Job or Contact support."
+                        " seconds. Aborting. Try re-submitting Job or contact support."
                     ),
                 )
             time.sleep(JOB_POLLING_INTERVAL_SECONDS)
@@ -228,10 +230,15 @@ class FresnelQPU(QPUHandler):
         if job_info.get_status() == "ERROR":
             raise QPUException(
                 ErrorType.NONERESULT,
-                "An error occured, check locally the Sequence before submitting or "
-                "contact the support.",
+                message="An error occured, check locally the Sequence before "
+                "submitting or contact the support.",
             )
-
+        elif job_info.get_status() == "CANCELED":
+            raise QPUException(
+                ErrorType.NONERESULT,
+                message="An error occured at the QPU level. "
+                "Try re-submitting Job or contact support.",
+            )
         return job_info
 
     def submit_job(self, job: Job) -> Result:
@@ -242,6 +249,14 @@ class FresnelQPU(QPUHandler):
                 key 'abstr_seq' of the dictionary serialized in Job.schedule._other. The
                 Sequence must be compatible with FresnelDevice.
         """
+        qlmaas_job_id = (job.meta_data or {}).get("qlmaas_job_id", None)
+        if qlmaas_job_id:
+            logger.info(f"Got QLMaaSJob: {qlmaas_job_id}")
+        else:
+            logger.warning(
+                "No QLMaaSJob id associated with this job. "
+                "Fill 'qlmaas_job_id' in job.meta_data."
+            )
         if job.schedule is None:
             raise QPUException(
                 ErrorType.NOT_SIMULATABLE,
@@ -335,7 +350,7 @@ class FresnelQPU(QPUHandler):
             return myqlm_result
         logger.info(f"Submitting Sequence: {abstr_seq}.")
         try:
-            job_info = self._qpu_client.create_job(nb_run, abstr_seq)
+            job_info = self._qpu_client.create_job(nb_run, abstr_seq, qlmaas_job_id)
         except requests.exceptions.RequestException as e:
             raise QPUException(
                 ErrorType.ABORT, message=f"Could not create job: Got {repr(e)}"
