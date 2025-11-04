@@ -151,6 +151,26 @@ def mocked_requests_get_error(*args, **kwargs):
     return MockResponse(None, 404)
 
 
+def mocked_requests_get_canceled(*args, **kwargs):
+    """Mocks a requests.get response from a working system with canceled jobs."""
+    mockresponse = {
+        OPERATIONAL_URL: MockResponse({"data": {"operational_status": "UP"}}, 200),
+        JOB_URL: MockResponse(
+            {"data": {"status": "CANCELED", "uid": JOB_UID, "program_id": PROGRAM_UID}},
+            200,
+        ),
+        SYSTEM_URL: SYSTEM_REPONSE,
+        PROGRAM_URL: MockResponse(
+            {"data": {"status": "CANCELED", "program_id": PROGRAM_UID}},
+            200,
+        ),
+    }
+    url = args[0] if args else kwargs["url"]
+    if url in mockresponse:
+        return mockresponse[url]
+    return MockResponse(None, 404)
+
+
 def mocked_requests_get_500_exception(*args, **kwargs):
     return MockResponse({}, 500)
 
@@ -709,6 +729,42 @@ def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq):
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
     with pytest.raises(QPUException, match="An error occured,"):
         qpu.submit(job_from_seq)
+
+
+@mock.patch(
+    "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_canceled
+)
+@mock.patch(
+    "pulser_myqlm.fresnel_qpu.requests.post",
+    side_effect=mocked_requests_post_success,
+)
+@pytest.mark.parametrize("remote_fresnel", [False, True])
+@pytest.mark.parametrize("meta_data", [None, "Job0"])
+def test_execution_canceled(
+    mock_get, mock_post, remote_fresnel, schedule_seq, meta_data, caplog
+):
+    """Test a FresnelQPU interfacing a non-working QPU which could accept jobs."""
+    global PORT
+    fresnel_qpu = FresnelQPU(base_uri=BASE_URI)
+    if remote_fresnel:
+        PORT += 1
+        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
+        server_thread.daemon = True
+        server_thread.start()
+    qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
+    # Simulate Sequence using Pulser Simulation
+    _, seq = schedule_seq
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    if meta_data is not None:
+        job_from_seq.meta_data = {"qlmaas_job_id": "Job0"}
+    with caplog.at_level(logging.WARNING if meta_data is None else logging.INFO):
+        with pytest.raises(QPUException, match="An error occured at the QPU"):
+            qpu.submit(job_from_seq)
+    assert (
+        "Got QLMaaSJob: Job0"
+        if meta_data is not None
+        else "No QLMaaSJob id associated with this job."
+    ) in caplog.text
 
 
 @mock.patch("pulser_myqlm.fresnel_qpu.requests.get")

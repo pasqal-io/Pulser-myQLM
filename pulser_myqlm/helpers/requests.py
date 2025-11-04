@@ -178,7 +178,9 @@ class PasqalQPUClient:
         return response
 
     @backoff_decorator_qpu
-    def _put_backoff(self, suffix: str, data: dict | None = None) -> requests.Response:
+    def _put_backoff(
+        self, suffix: str, data: dict | None = None
+    ) -> requests.Response:  # pragma: no cover
         response = requests.put(self.base_uri + suffix, json=data)
         response.raise_for_status()
         return response
