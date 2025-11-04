@@ -151,6 +151,26 @@ def mocked_requests_get_error(*args, **kwargs):
     return MockResponse(None, 404)
 
 
+def mocked_requests_get_canceled(*args, **kwargs):
+    """Mocks a requests.get response from a working system with canceled jobs."""
+    mockresponse = {
+        OPERATIONAL_URL: MockResponse({"data": {"operational_status": "UP"}}, 200),
+        JOB_URL: MockResponse(
+            {"data": {"status": "CANCELED", "uid": JOB_UID, "program_id": PROGRAM_UID}},
+            200,
+        ),
+        SYSTEM_URL: SYSTEM_REPONSE,
+        PROGRAM_URL: MockResponse(
+            {"data": {"status": "CANCELED", "program_id": PROGRAM_UID}},
+            200,
+        ),
+    }
+    url = args[0] if args else kwargs["url"]
+    if url in mockresponse:
+        return mockresponse[url]
+    return MockResponse(None, 404)
+
+
 def mocked_requests_get_500_exception(*args, **kwargs):
     return MockResponse({}, 500)
 
@@ -171,7 +191,7 @@ def mocked_requests_post_success(*args, **kwargs):
     """Mocks a response to the post of a job accepted by the system."""
     job_url = "http://fresneldevice/api/latest/jobs"
     if args[0] == job_url if args else kwargs["url"] == job_url:
-        if list(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
+        if list(kwargs["json"].keys()) != ["nb_run", "pulser_sequence", "context"]:
             return MockResponse(None, 400)
         return MockResponse(
             {"data": {"status": "PENDING", "uid": JOB_UID, "program_id": PROGRAM_UID}},
@@ -184,7 +204,7 @@ def mocked_requests_post_fail(*args, **kwargs):
     """Mocks a response to the post of a job not accepted by the system."""
     job_url = "http://fresneldevice/api/latest/jobs"
     if args[0] == job_url if args else kwargs["url"] == job_url:
-        if set(kwargs["json"].keys()) != ["nb_run", "pulser_sequence"]:
+        if set(kwargs["json"].keys()) != ["nb_run", "pulser_sequence", "context"]:
             return MockResponse(None, 400)
         return MockResponse(
             {"data": {"status": "ERROR", "uid": JOB_UID, "program_id": PROGRAM_UID}},
@@ -711,6 +731,42 @@ def test_execution_error(mock_get, mock_post, remote_fresnel, schedule_seq):
         qpu.submit(job_from_seq)
 
 
+@mock.patch(
+    "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_canceled
+)
+@mock.patch(
+    "pulser_myqlm.fresnel_qpu.requests.post",
+    side_effect=mocked_requests_post_success,
+)
+@pytest.mark.parametrize("remote_fresnel", [False, True])
+@pytest.mark.parametrize("meta_data", [None, "Job0"])
+def test_execution_canceled(
+    mock_get, mock_post, remote_fresnel, schedule_seq, meta_data, caplog
+):
+    """Test a FresnelQPU interfacing a non-working QPU which could accept jobs."""
+    global PORT
+    fresnel_qpu = FresnelQPU(base_uri=BASE_URI)
+    if remote_fresnel:
+        PORT += 1
+        server_thread = Thread(target=deploy_qpu, args=(fresnel_qpu, PORT))
+        server_thread.daemon = True
+        server_thread.start()
+    qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
+    # Simulate Sequence using Pulser Simulation
+    _, seq = schedule_seq
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    if meta_data is not None:
+        job_from_seq.meta_data = {"qlmaas_job_id": "Job0"}
+    with caplog.at_level(logging.WARNING if meta_data is None else logging.INFO):
+        with pytest.raises(QPUException, match="An error occured at the QPU"):
+            qpu.submit(job_from_seq)
+    assert (
+        "Got QLMaaSJob: Job0"
+        if meta_data is not None
+        else "No QLMaaSJob id associated with this job."
+    ) in caplog.text
+
+
 @mock.patch("pulser_myqlm.fresnel_qpu.requests.get")
 @mock.patch(
     "requests.post",
@@ -727,7 +783,12 @@ def test_job_polling_success(
     fresnel_qpu = FresnelQPU(base_uri=BASE_URI)
     # Test job polling on local QPU
     response = requests.post(
-        fresnel_qpu.base_uri + "/jobs", json={"nb_run": 1, "pulser_sequence": "seq"}
+        fresnel_qpu.base_uri + "/jobs",
+        json={
+            "nb_run": 1,
+            "pulser_sequence": "seq",
+            "context": {"pasqman_job_id": "123", "batch_id": "123"},
+        },
     )
     job_response = JobInfo(response.json()["data"])
     polling_behaviour = [
@@ -811,7 +872,11 @@ def test_device_fetching_job_polling_errors(
         return
 
     post_address = fresnel_qpu.base_uri + "/jobs"
-    post_json = {"nb_run": 1, "pulser_sequence": "seq"}
+    post_json = {
+        "nb_run": 1,
+        "pulser_sequence": "seq",
+        "context": {"pasqman_job_id": "123", "batch_id": "123"},
+    }
     _, seq = schedule_seq
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
     successes = [mocked_requests_get_success for _ in range(2)]
