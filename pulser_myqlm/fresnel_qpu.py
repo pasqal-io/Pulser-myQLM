@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import warnings
@@ -341,7 +342,9 @@ class FresnelQPU(QPUHandler):
                 ErrorType.NOT_SIMULATABLE,
                 message=f"Too many runs asked. Max number of runs is {max_nb_run}.",
             )
-        abstr_seq = seq.to_abstract_repr()
+        abstr_seq_dict = json.loads(seq.to_abstract_repr(skip_validation=True))
+        abstr_seq_dict.pop("metadata", None)
+        abstr_seq = json.dumps(abstr_seq_dict)
         if self._qpu_client is None:
             logger.info(f"Simulating Sequence: {abstr_seq}.")
             pulser_results = simulate_seq(seq, modulation, nb_run)
