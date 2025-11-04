@@ -89,7 +89,7 @@ class PasqalQPUClient:
         # By default, submitting a job to the QPU cancels the previous job submitted
         pasqman_job_id = f"{uuid.uuid4()}"
         if batch_id is None:
-            batch_id = pasqman_job_id
+            batch_id = f"pasqal-batch-{pasqman_job_id}"
         logger.info(f"Creating pasqman_job_id {pasqman_job_id} for batch id {batch_id}")
         payload = {
             "nb_run": nb_run,
