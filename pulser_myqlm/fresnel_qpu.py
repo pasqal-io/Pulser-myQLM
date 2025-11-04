@@ -327,7 +327,7 @@ class FresnelQPU(QPUHandler):
                 ErrorType.NOT_SIMULATABLE,
                 message=f"Too many runs asked. Max number of runs is {max_nb_run}.",
             )
-        abstr_seq_dict = json.load(seq.to_abstract_repr(skip_validation=True))
+        abstr_seq_dict = json.loads(seq.to_abstract_repr(skip_validation=True))
         abstr_seq_dict.pop("metadata", None)
         abstr_seq = json.dumps(abstr_seq_dict)
         if self._qpu_client is None:
