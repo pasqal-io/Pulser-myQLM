@@ -172,9 +172,9 @@ def test_available_devices(caplog):
         assert mock_conn.fetch_available_devices() == {}  # no devices
     # Get the reason of the failure in logs
     assert (
-        "Can't find a correct Device in description of specs of QLMaaSQPU RemoteFresnelQPU. Got QPUException("
-        in caplog.text
-    )
+        "Can't find a correct Device in description of specs of QLMaaSQPU "
+        "RemoteFresnelQPU. Got QPUException("
+    ) in caplog.text
     # Only the QPUs that don't need arguments and have serialized device
     # in the description of their HardwareSpecs are shown.
     mock_conn = PulserQLMConnection()
