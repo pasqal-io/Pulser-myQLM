@@ -8,7 +8,6 @@ import typing
 import pulser
 import qat
 from pulser.backend.remote import BatchStatus, JobStatus
-from pulser.exceptions.serialization import DeserializeDeviceError
 
 from pulser_myqlm.helpers.deserialize_other import deserialize_other
 from pulser_myqlm.helpers.qlm_connection import QLMClient
@@ -214,7 +213,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
             # in the description of its specs
             try:
                 device = pulser.devices.Device.from_abstract_repr(qpu.get_description())
-            except (TypeError, DeserializeDeviceError) as e:
+            except Exception as e:
                 # Go to the next QPU if no device was found
                 logger.debug(
                     "Can't find a correct Device in description of specs of QLMaaSQPU "
