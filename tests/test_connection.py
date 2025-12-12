@@ -166,12 +166,15 @@ def test_available_devices(caplog):
     server_thread = Thread(target=deploy_qpu, args=(FresnelQPU(None), FRESNEL_PORT))
     server_thread.daemon = True
     server_thread.start()
-    # If there is no QPU providing a pulser Device, returns no devices 
+    # If there is no QPU providing a pulser Device, returns no devices
     mock_conn = PulserQLMConnection(wrong_remote_fresnel_qpu=True)
     with caplog.at_level(logging.DEBUG):
         assert mock_conn.fetch_available_devices() == {}  # no devices
     # Get the reason of the failure in logs
-    assert "Can't find a correct Device in description of specs of QLMaaSQPU RemoteFresnelQPU. Got QPUException(" in caplog.text
+    assert (
+        "Can't find a correct Device in description of specs of QLMaaSQPU "
+        "RemoteFresnelQPU. Got QPUException("
+    ) in caplog.text
     # Only the QPUs that don't need arguments and have serialized device
     # in the description of their HardwareSpecs are shown.
     mock_conn = PulserQLMConnection()
