@@ -701,7 +701,7 @@ def test_non_operational_qpu(
     if base_uri:
         exp_result = [
             (Sample(probability=0.999, state=0), "|000>"),
-            (Sample(probability=0.001, state=4), "|100>"),
+            (Sample(probability=0.001, state=1), "|001>"),
         ]
     else:
         exp_result = [
@@ -863,7 +863,7 @@ def test_job_polling_success(
     result = qpu.submit(job_from_seq)
     exp_result = [
         (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.001, state=4), "|100>"),
+        (Sample(probability=0.001, state=1), "|001>"),
     ]
     compare_results_raw_data(result.raw_data, exp_result)
 
