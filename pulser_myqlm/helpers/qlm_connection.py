@@ -77,7 +77,6 @@ class QLMaaSQPUWrapper:
         # no backoff to have Jobs submitted once
         return AsyncResultWrapper(self.qpu.submit(batch))
 
-    @backoff_decorator_qlm
     def get_description(self) -> str:
         """Returns the description of the specs of the QPU."""
         return cast(str, self.qpu.get_specs().description)
