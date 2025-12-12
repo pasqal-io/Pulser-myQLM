@@ -288,12 +288,16 @@ class IsingAQPU(QPUHandler):
         return schedule.to_job(nbshots=nbshots)
 
     @staticmethod
-    def convert_samples_to_result(result_samples: Counter | dict[str, int]) -> Result:
+    def convert_samples_to_result(
+        result_samples: Counter | dict[str, int], aggregate_samples: bool = True
+    ) -> Result:
         """Converts the output of a sampling into a MyQLM Result.
 
         Args:
             result_samples: A dictionary of strings describing the measured states
                 and their respective counts.
+            aggregate: If False, the samples are not aggregated ie the myQLM
+                Result has n_samples Samples of frequency 1/n_samples.
 
         Returns:
             Result: A myqlm Result associating each state with
@@ -307,7 +311,12 @@ class IsingAQPU(QPUHandler):
 
         myqlm_result = Result(meta_data=meta_data)
         for state, counts in result_samples.items():
-            myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
+            if aggregate_samples:
+                myqlm_result.add_sample(int(state, 2), probability=counts / n_samples)
+                continue
+            for _ in range(counts):
+                myqlm_result.add_sample(int(state, 2), probability=1 / n_samples)
+
         myqlm_result.wrap_samples(
             [QRegister(0, length=int(meta_data.get("n_qubits", 0)))]
         )
@@ -366,9 +375,9 @@ class IsingAQPU(QPUHandler):
             # Going from counts to probability = counts/n_samples back to counts
             # causes issues with float. We assume the obtained counts is close to
             # an integer
-            samples[sample.state.bitstring.zfill(n_qubits)] = round(
-                sample.probability * n_samples
-            )
+            if (bitstring := sample.state.bitstring.zfill(n_qubits)) not in samples:
+                samples[bitstring] = 0
+            samples[bitstring] += round(sample.probability * n_samples)
         return Counter(samples)
 
     def submit(self, batch: Batch, **kwargs: Any) -> BatchResult:
@@ -426,5 +435,5 @@ class IsingAQPU(QPUHandler):
         other_dict = deserialize_other(job.schedule._other)
         modulation = other_dict.get("modulation", False)
         return self.convert_samples_to_result(
-            simulate_seq(other_dict["seq"], modulation, job.nbshots)
+            simulate_seq(other_dict["seq"], modulation, job.nbshots), job.aggregate_data
         )
