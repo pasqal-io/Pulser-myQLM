@@ -319,7 +319,6 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job, aggregate_data):
     job_from_seq.aggregate_data = aggregate_data
     assert job_from_seq.nbshots == 1000
     result = aqpu.submit(job_from_seq)
-    print(result)
     exp_result = (
         [(Sample(probability=0.999, state=0), "|000>")]
         if aggregate_data
