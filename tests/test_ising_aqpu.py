@@ -390,6 +390,7 @@ def test_convert_sequence_with_failing_schedule(failing_schedule_seq):
     # Conclusion: This is an issue with the evaluation of times in MyQLM's get_item
 
 
+@pytest.mark.parametrize("aggregate_data", [True, False])
 @pytest.mark.parametrize(
     "meta_data, err_mess",
     [
@@ -405,7 +406,9 @@ def test_convert_sequence_with_failing_schedule(failing_schedule_seq):
         ),
     ],
 )
-def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_ising_qpu):
+def test_conversion_sampling_result(
+    meta_data, err_mess, schedule_seq, test_ising_qpu, aggregate_data
+):
     """Test the conversion of MyQLM Result into a Counter as in Pulser."""
     np.random.seed(111)
     _, seq = schedule_seq
@@ -414,19 +417,31 @@ def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_isin
     sim_samples = sim_result.sample_final_state(n_samples)
     sim_samples_dict = {k: v for k, v in sim_samples.items()}
     # Testing the conversion of the pulser samples in a myqlm result
-    myqlm_result = test_ising_qpu.convert_samples_to_result(sim_samples)
-    myqlm_result_from_dict = test_ising_qpu.convert_samples_to_result(sim_samples_dict)
+    myqlm_result = test_ising_qpu.convert_samples_to_result(sim_samples, aggregate_data)
+    myqlm_result_from_dict = test_ising_qpu.convert_samples_to_result(
+        sim_samples_dict, aggregate_data
+    )
     assert myqlm_result.meta_data["n_samples"] == str(
         n_samples
     ) and myqlm_result.meta_data["n_qubits"] == str(test_ising_qpu.nbqubits)
-
-    myqlm_samples = {
-        sample.state.int: sample.probability for sample in myqlm_result.raw_data
-    }
-    myqlm_samples_from_dict = {
-        sample.state.int: sample.probability
-        for sample in myqlm_result_from_dict.raw_data
-    }
+    if not aggregate_data:
+        assert len(myqlm_result.raw_data) == n_samples
+    myqlm_samples = {}
+    for sample in myqlm_result.raw_data:
+        if sample.state.int not in myqlm_samples:
+            myqlm_samples[sample.state.int] = 0
+        myqlm_samples[sample.state.int] += sample.probability
+    # acount for float imprecision
+    for sample, proba in myqlm_samples.items():
+        myqlm_samples[sample] = round(proba, 6)
+    myqlm_samples_from_dict = {}
+    for sample in myqlm_result_from_dict.raw_data:
+        if sample.state.int not in myqlm_samples_from_dict:
+            myqlm_samples_from_dict[sample.state.int] = 0
+        myqlm_samples_from_dict[sample.state.int] += sample.probability
+    # acount for float imprecision
+    for sample, proba in myqlm_samples_from_dict.items():
+        myqlm_samples_from_dict[sample] = round(proba, 6)
     assert (
         {int(k, 2): v / n_samples for k, v in sim_samples.items()}
         == myqlm_samples
@@ -513,7 +528,8 @@ def test_job_deserialization_ising(schedule_seq, other_value, err_mess):
         aqpu.submit(job)
 
 
-def test_run_sequence_ising(schedule_seq, circuit_job):
+@pytest.mark.parametrize("aggregate_data", (True, False))
+def test_run_sequence_ising(schedule_seq, circuit_job, aggregate_data):
     """Test simulation of a Sequence using pulser-simulation."""
     np.random.seed(111)
     schedule, seq = schedule_seq
@@ -527,12 +543,14 @@ def test_run_sequence_ising(schedule_seq, circuit_job):
 
     # Run job created from a sequence using convert_sequence_to_job
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
+    job_from_seq.aggregate_data = aggregate_data
     assert job_from_seq.nbshots == 1000
     result = aqpu.submit(job_from_seq)
-    exp_result = [
-        (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.001, state=1), "|001>"),
-    ]
+    exp_result = (
+        [(Sample(probability=0.999, state=0), "|000>")]
+        if aggregate_data
+        else [(Sample(probability=0.001, state=0), "|000>") for _ in range(999)]
+    ) + [(Sample(probability=0.001, state=1), "|001>")]
     compare_results_raw_data(result.raw_data, exp_result)
     assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "001": 1}
     # Run Batch of Jobs
@@ -544,9 +562,14 @@ def test_run_sequence_ising(schedule_seq, circuit_job):
     # Run job created from a sequence using convert_sequence_to_schedule
     schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
     job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
+    job_from_seq.aggregate_data = aggregate_data
     assert not job_from_seq.nbshots
     result_schedule = aqpu.submit(job_from_seq)
-    exp_result_schedule = [(Sample(probability=1.0, state=0), "|000>")]
+    exp_result_schedule = (
+        [(Sample(probability=1.0, state=0), "|000>")]
+        if aggregate_data
+        else [(Sample(probability=0.0005, state=0), "|000>") for _ in range(2000)]
+    )
     compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
     assert IsingAQPU.convert_result_to_samples(result_schedule) == {"000": 2000}
 
@@ -555,12 +578,14 @@ def test_run_sequence_ising(schedule_seq, circuit_job):
     empty_schedule = Schedule()
     empty_schedule._other = schedule_from_seq._other
     empty_job.schedule = empty_schedule
+    empty_job.aggregate_data = aggregate_data
     result_empty_sch = aqpu.submit(empty_job)
-    exp_result_empty_sch = [
-        (Sample(probability=0.9995, state=0), "|000>"),
-        (Sample(probability=0.0005, state=2), "|010>"),
-    ]
-    print(result_empty_sch.raw_data)
+    exp_result_empty_sch = (
+        [(Sample(probability=0.9995, state=0), "|000>")]
+        if aggregate_data
+        else [(Sample(probability=0.0005, state=0), "|000>") for _ in range(1999)]
+    )
+    exp_result_empty_sch += [(Sample(probability=0.0005, state=2), "|010>")]
     compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
     assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
         "000": 1999,
