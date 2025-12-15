@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections import Counter
+from collections import Counter, defaultdict
 from functools import cached_property
 from typing import Any, Union, cast
 
@@ -341,7 +341,7 @@ class IsingAQPU(QPUHandler):
                 and their respective counts.
         """
         # Associates to each measured state its frequency of occurence
-        samples: dict[str, int] = {}
+        samples: dict[str, int] = defaultdict(int)
         if not myqlm_result.raw_data:
             return Counter(samples)
         # raw_data is not empty so n_samples and n_qubits must be defined
@@ -375,9 +375,9 @@ class IsingAQPU(QPUHandler):
             # Going from counts to probability = counts/n_samples back to counts
             # causes issues with float. We assume the obtained counts is close to
             # an integer
-            if (bitstring := sample.state.bitstring.zfill(n_qubits)) not in samples:
-                samples[bitstring] = 0
-            samples[bitstring] += round(sample.probability * n_samples)
+            samples[sample.state.bitstring.zfill(n_qubits)] += round(
+                sample.probability * n_samples
+            )
         return Counter(samples)
 
     def submit(self, batch: Batch, **kwargs: Any) -> BatchResult:
