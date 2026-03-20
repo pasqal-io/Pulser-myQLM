@@ -2,6 +2,54 @@
 
 Pulser-MyQLM is an extension of [Pulser](https://pulser.readthedocs.io/en/stable/index.html) and [myQLM](https://qlm.bull.com/bin/view/Main/) for the integration of the Pulser framework and Pasqal devices within the myQLM framework.
 
+## Get it started
+
+### Step 1 - Identify Pasqal QPUs in your Qaptiva system
+
+```python
+from pulser_myqlm import PulserQLMConnection
+
+connection = PulserQLMConnection()
+
+devices = connection.fetch_available_devices()
+device_names = devices.keys()
+if device_names:
+    print("Pasqal QPUs available:\n * " + "\n * ".join(device_names))
+else:
+    print("No Pasqal QPU available")
+```
+
+### Step 2 - Submit a sequence to Pasqal QPU
+
+```python
+from pulser import Register, Pulse, QPUBackend, Sequence
+from pulser.backend.remote import JobParams
+from pulser_myqlm import PulserQLMConnection
+
+connection = PulserQLMConnection()
+
+QPU_NAME = 'qat.qpus:PasqalQPU'
+
+# Find Pasqal device and print specifications
+devices = connection.fetch_available_devices()
+pasqal_device = devices[QPU_NAME]
+print("Using the Device:", "\n")
+pasqal_device.print_specs()
+
+# Define a simple sequence
+register = Register.square(2, spacing=5, prefix="q").with_automatic_layout(pasqal_device)
+sequence = Sequence(register, pasqal_device)
+sequence.declare_channel("rydberg", "rydberg_global")
+sequence.add(Pulse.ConstantPulse(100, 4, 2, 0.0), "rydberg")
+
+# Execute the Sequence on the QPU
+print("Sending sequence to Pasqal QPU")
+qpu = QPUBackend(sequence, connection=conn)
+remote_results = qpu.run([JobParams(runs=100, variables=[])], wait=True)
+count = remote_results[0].bitstring_counts
+print("Obtained samples:", count)
+```
+
 ## Installation
 
 To install the ``pulser-myqlm`` package, simply clone this repository, go to its root folder and run
