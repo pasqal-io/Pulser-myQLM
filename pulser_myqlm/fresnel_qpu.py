@@ -348,7 +348,9 @@ class FresnelQPU(QPUHandler):
         if self._qpu_client is None:
             logger.info(f"Simulating Sequence: {abstr_seq}.")
             pulser_results = simulate_seq(seq, modulation, nb_run)
-            myqlm_result = IsingAQPU.convert_samples_to_result(pulser_results)
+            myqlm_result = IsingAQPU.convert_samples_to_result(
+                pulser_results, job.aggregate_data
+            )
             logger.info(f"Sequence succesfully simulated. Got {pulser_results}.")
             return myqlm_result
         logger.info(f"Submitting Sequence: {abstr_seq}.")
@@ -366,4 +368,4 @@ class FresnelQPU(QPUHandler):
         counter = job_info.get_counter_result()
         logger.info(f"Job #{job_info.get_id()} done, got{counter}.")
         # Convert the output of the API into a MyQLM Result
-        return IsingAQPU.convert_samples_to_result(counter)
+        return IsingAQPU.convert_samples_to_result(counter, job.aggregate_data)
