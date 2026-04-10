@@ -25,6 +25,7 @@ else:
 from pulser import Register, Pulse, QPUBackend, Sequence
 from pulser.backend.remote import JobParams
 from pulser_myqlm import PulserQLMConnection
+from qat.qlmaas import QLMaaSConnection
 
 connection = PulserQLMConnection()
 
@@ -35,6 +36,11 @@ devices = connection.fetch_available_devices()
 pasqal_device = devices[QPU_NAME]
 print("Using the Device:", "\n")
 pasqal_device.print_specs()
+
+# Check QPU status
+qpu_status = QLMaaSConnection().get_qpu(QPU_NAME)().get_specs().meta_data["operational_status"]
+print("%s status: %s" % (QPU_NAME, qpu_status))
+assert qpu_status == "UP"
 
 # Define a simple sequence
 register = Register.square(2, spacing=5, prefix="q").with_automatic_layout(pasqal_device)
