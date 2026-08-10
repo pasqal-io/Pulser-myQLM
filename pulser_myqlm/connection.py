@@ -276,16 +276,16 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                 continue
             # The Job is DONE, fetch its myqlm Result
             result = async_res.get_result()
-            # and make a pulser SampledResult, that needs the qubit ids and meas basis
+            # and make a pulser Results, that needs the qubit ids and duration
             # that are in the submitted Sequence.
             seq = self.get_sequence(job_id)
-            # Create a SampledResult with qubit ids, meas basis of seq, result of Job
+            # Create a Results instance with qubit ids, duration of seq, result of Job
             progress_results[job_id] = (
                 status,
-                pulser.result.SampledResult(
+                pulser.backend.Results.from_final_bitstrings(
                     atom_order=seq.get_register(include_mappable=True).qubit_ids,
-                    meas_basis=seq.get_measurement_basis(),
-                    bitstring_counts=IsingAQPU.convert_result_to_samples(result),
+                    total_duration=seq.get_duration(),
+                    final_bitstrings=IsingAQPU.convert_result_to_samples(result),
                 ),
             )
         return progress_results

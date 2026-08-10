@@ -345,14 +345,13 @@ def test_seq_submission():
     assert res.get_batch_status() == pulser.backend.remote.BatchStatus.DONE
     assert len(res.get_available_results()) == 1
     assert isinstance(
-        res.get_available_results()[f"{job_id}"], pulser.result.SampledResult
+        res.get_available_results()[f"{job_id}"], pulser.backend.Results
     )
-    assert res.get_available_results()[f"{job_id}"].bitstring_counts == {
+    assert res.get_available_results()[f"{job_id}"].final_bitstrings == {
         "1111": job_params["runs"]
     }
     assert res.get_available_results()[f"{job_id}"].atom_order == seq.register.qubit_ids
-    assert res.get_available_results()[f"{job_id}"].meas_basis == "ground-rydberg"
-    assert [sampled_res.bitstring_counts for sampled_res in res.results] == [
+    assert [sampled_res.final_bitstrings for sampled_res in res.results] == [
         {"1111": job_params["runs"]}
     ]
     assert mock_conn._fetch_result(f"{job_id}", None) == res.results
@@ -378,10 +377,10 @@ def test_seq_submission():
     assert res.job_ids == [f"{job_id}", f"{job_id+1}"]
     assert res.get_batch_status() == pulser.backend.remote.BatchStatus.DONE
     assert len(res.get_available_results()) == 2
-    assert res.get_available_results()[f"{job_id}"].bitstring_counts == {
+    assert res.get_available_results()[f"{job_id}"].final_bitstrings == {
         "0000": job_params["runs"]
     }
-    assert res.get_available_results()[f"{job_id+1}"].bitstring_counts == {
+    assert res.get_available_results()[f"{job_id+1}"].final_bitstrings == {
         "0000": job_params_2["runs"]
     }
     seq.measure()
