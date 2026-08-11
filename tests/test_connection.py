@@ -344,9 +344,7 @@ def test_seq_submission():
     assert res.job_ids == [f"{job_id}"]
     assert res.get_batch_status() == pulser.backend.remote.BatchStatus.DONE
     assert len(res.get_available_results()) == 1
-    assert isinstance(
-        res.get_available_results()[f"{job_id}"], pulser.backend.Results
-    )
+    assert isinstance(res.get_available_results()[f"{job_id}"], pulser.backend.Results)
     assert res.get_available_results()[f"{job_id}"].final_bitstrings == {
         "1111": job_params["runs"]
     }
