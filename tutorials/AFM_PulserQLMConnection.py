@@ -56,7 +56,7 @@ seq.add(interpolated_pulse, "ising")
 qpu = QPUBackend(seq, connection=conn)
 
 remote_results = qpu.run([JobParams(runs=1000, variables=[])], wait=True)
-count = remote_results[0].bitstring_counts
+count = remote_results[0].final_bitstrings
 
 # Print the most interesting samples
 print("Obtained samples:", count)
