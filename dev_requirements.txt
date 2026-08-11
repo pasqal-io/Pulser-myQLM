@@ -3,7 +3,7 @@ pytest-cov
 flake8-docstrings
 black[jupyter]
 isort
-mypy == 0.991
+mypy
 types-requests
 
 # tutorials
