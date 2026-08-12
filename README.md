@@ -52,7 +52,7 @@ sequence.add(Pulse.ConstantPulse(100, 4, 2, 0.0), "rydberg")
 print("Sending sequence to Pasqal QPU")
 qpu = QPUBackend(sequence, connection=conn)
 remote_results = qpu.run([JobParams(runs=100, variables=[])], wait=True)
-count = remote_results[0].bitstring_counts
+count = remote_results[0].final_bitstrings
 print("Obtained samples:", count)
 ```
 

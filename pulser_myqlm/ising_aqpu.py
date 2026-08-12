@@ -79,12 +79,10 @@ class IsingAQPU(QPUHandler):
                 self.channel = channel_name
                 break
         else:
-            raise ValueError(
-                """
+            raise ValueError("""
                 Ising AQPU: the device should at least have
                 a Rydberg channel with Global addressing.
-                """
-            )
+                """)
 
     def set_qpu(self, qpu: QPUType = None) -> None:
         """Set the QPU to use to simulate jobs.
