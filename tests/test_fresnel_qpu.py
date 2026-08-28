@@ -64,6 +64,7 @@ OPERATIONAL_URL = "http://fresneldevice/api/latest/system/operational"
 JOB_URL = f"http://fresneldevice/api/latest/jobs/{JOB_UID}"
 SYSTEM_URL = "http://fresneldevice/api/latest/system"
 PROGRAM_URL = f"http://fresneldevice/api/latest/programs/{PROGRAM_UID}"
+COUNTER_RES = {"000": 999, "001": 1}
 
 SYSTEM_REPONSE = MockResponse(
     {
@@ -83,7 +84,7 @@ def mocked_requests_get_success(*args, **kwargs):
             {
                 "data": {
                     "status": "DONE",
-                    "result": json.dumps({"counter": {"000": 0.999, "100": 0.001}}),
+                    "result": json.dumps({"counter": COUNTER_RES}),
                     "uid": JOB_UID,
                     "program_id": PROGRAM_UID,
                 }
@@ -279,8 +280,9 @@ def test_job_deserialization_fresnel(schedule_seq, other_value):
         aqpu.submit(job)
 
 
+@pytest.mark.parametrize("aggregate_data", (False, True))
 @pytest.mark.parametrize("qpu", ["local", "remote"])
-def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
+def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job, aggregate_data):
     """Test simulation of a Sequence using pulser-simulation."""
     np.random.seed(111)
     schedule, seq = schedule_seq
@@ -314,20 +316,28 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
 
     # Run job created from a sequence using convert_sequence_to_job
     job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=1000)
+    job_from_seq.aggregate_data = aggregate_data
     assert job_from_seq.nbshots == 1000
     result = aqpu.submit(job_from_seq)
-    exp_result = [
-        (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.001, state=1), "|001>"),
-    ]
+    exp_result = (
+        [(Sample(probability=0.999, state=0), "|000>")]
+        if aggregate_data
+        else [(Sample(probability=0.001, state=0), "|000>") for _ in range(999)]
+    )
+    exp_result += [(Sample(probability=0.001, state=1), "|001>")]
     compare_results_raw_data(result.raw_data, exp_result)
     assert IsingAQPU.convert_result_to_samples(result) == {"000": 999, "001": 1}
     # Run job created from a sequence using convert_sequence_to_schedule
     schedule_from_seq = aqpu.convert_sequence_to_schedule(seq)
     job_from_seq = schedule_from_seq.to_job()  # manually defining number of shots
+    job_from_seq.aggregate_data = aggregate_data
     assert not job_from_seq.nbshots
     result_schedule = aqpu.submit(job_from_seq)
-    exp_result_schedule = [(Sample(probability=1, state=0), "|000>")]
+    exp_result_schedule = (
+        [(Sample(probability=1, state=0), "|000>")]
+        if aggregate_data
+        else [(Sample(probability=0.0005, state=0), "|000>") for _ in range(2000)]
+    )
     compare_results_raw_data(result_schedule.raw_data, exp_result_schedule)
     assert IsingAQPU.convert_result_to_samples(result_schedule) == {"000": 2000}
 
@@ -336,11 +346,14 @@ def test_run_sequence_fresnel(schedule_seq, qpu, circuit_job):
     empty_schedule = Schedule()
     empty_schedule._other = schedule_from_seq._other
     empty_job.schedule = empty_schedule
+    empty_job.aggregate_data = aggregate_data
     result_empty_sch = aqpu.submit(empty_job)
-    exp_result_empty_sch = [
-        (Sample(probability=0.9995, state=0), "|000>"),
-        (Sample(probability=0.0005, state=2), "|010>"),
-    ]
+    exp_result_empty_sch = (
+        [(Sample(probability=0.9995, state=0), "|000>")]
+        if aggregate_data
+        else [(Sample(probability=0.0005, state=0), "|000>") for _ in range(1999)]
+    )
+    exp_result_empty_sch += [(Sample(probability=0.0005, state=2), "|010>")]
     compare_results_raw_data(result_empty_sch.raw_data, exp_result_empty_sch)
     assert IsingAQPU.convert_result_to_samples(result_empty_sch) == {
         "000": 1999,
@@ -500,6 +513,8 @@ def test_job_submission(mock_get, mock_post, base_uri, remote_fresnel, schedule_
         qpu.submit(job_from_seq)
 
 
+@pytest.mark.parametrize("nbshots", (1000, 2000))
+@pytest.mark.parametrize("aggregate_data", (True, False))
 @mock.patch(
     "pulser_myqlm.fresnel_qpu.requests.get", side_effect=mocked_requests_get_success
 )
@@ -517,6 +532,9 @@ def test_job_simulation(
     device,
     remote_fresnel,
     schedule_seq,
+    aggregate_data,
+    nbshots,
+    caplog,
 ):
     """Test Sequence simulation on a FresnelQPU interfacing a working QPU."""
     global PORT
@@ -535,19 +553,29 @@ def test_job_simulation(
     qpu = get_remote_qpu(PORT) if remote_fresnel else fresnel_qpu
 
     # Simulate Sequence using Pulser Simulation
-    job_from_seq = IsingAQPU.convert_sequence_to_job(seq)
+    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, nbshots=nbshots)
+    job_from_seq.aggregate_data = aggregate_data
     np.random.seed(111)
+    caplog.set_level(logging.INFO)
     result = qpu.submit(job_from_seq)
-    if base_uri:
-        exp_result = [
-            (Sample(probability=0.999, state=0), "|000>"),
-            (Sample(probability=0.001, state=4), "|100>"),
-        ]
+    if base_uri or (base_uri is None and nbshots == 1000):
+        # Mock QPU returns {"000":999, "111":1} no matter nbshots
+        exp_result = (
+            [(Sample(probability=0.999, state=0), "|000>")]
+            if aggregate_data
+            else [(Sample(probability=0.001, state=0), "|000>") for _ in range(999)]
+        )
+        exp_result += [(Sample(probability=0.001, state=1), "|001>")]
+        assert IsingAQPU.convert_result_to_samples(result) == COUNTER_RES
     else:
-        exp_result = [
-            (Sample(probability=0.9995, state=0), "|000>"),
-            (Sample(probability=0.0005, state=1), "|001>"),
-        ]
+        # FresnelQPU(None) returns a valid number of samples
+        exp_result = (
+            [(Sample(probability=0.9995, state=0), "|000>")]
+            if aggregate_data
+            else [(Sample(probability=0.0005, state=0), "|000>") for _ in range(1999)]
+        )
+        exp_result += [(Sample(probability=0.0005, state=1), "|001>")]
+        assert IsingAQPU.convert_result_to_samples(result) == {"000": 1999, "001": 1}
     compare_results_raw_data(result.raw_data, exp_result)
 
 
@@ -672,7 +700,7 @@ def test_non_operational_qpu(
     if base_uri:
         exp_result = [
             (Sample(probability=0.999, state=0), "|000>"),
-            (Sample(probability=0.001, state=4), "|100>"),
+            (Sample(probability=0.001, state=1), "|001>"),
         ]
     else:
         exp_result = [
@@ -834,7 +862,7 @@ def test_job_polling_success(
     result = qpu.submit(job_from_seq)
     exp_result = [
         (Sample(probability=0.999, state=0), "|000>"),
-        (Sample(probability=0.001, state=4), "|100>"),
+        (Sample(probability=0.001, state=1), "|001>"),
     ]
     compare_results_raw_data(result.raw_data, exp_result)
 
