@@ -112,7 +112,7 @@ A thorough presentation of the conversion of Sequence into a Job is presented in
 
 Internal developpers wanting to connect a Pasqal QPU with their QLM have to use a `RemoteQPU` in their QLM, connected to a `FresnelQPU`, itself connected to the QPU. 
 
-To ease the development, `pulser-myqlm` provides a python executable [fresnel_qpu_server.py](./fresnel_qpu_server.py), that takes as input the IP address of the QPU and its port, as well as the IP address and the port on which to create a `FresnelQPU` server. By using a `RemoteQPU` pointing to the IP address and the port of this server, any Sequence that will be submitted to this `RemoteQPU` will be executed on the QPU (see an example in [this tutorial](./tutorials/pulser-myqlm.ipynb)).
+To ease the development, `pulser-myqlm` provides a python executable [fresnel_qpu_server.py](./fresnel_qpu_server.py), that takes as input the IP address of the QPU and its port, as well as the IP address and the port on which to create a `FresnelQPU` server. The server port defaults to `1234` when `--server-port` is omitted. By using a `RemoteQPU` pointing to the IP address and the port of this server, any Sequence that will be submitted to this `RemoteQPU` will be executed on the QPU (see an example in [this tutorial](./tutorials/pulser-myqlm.ipynb)).
 
 The process started with the executable will by default log to stdout and a local file. The log level and the log file can be easily customized. The whole logging configuration can also be set with a configuration file as per [python specifications](https://docs.python.org/3/library/logging.config.html#configuration-file-format).
 
