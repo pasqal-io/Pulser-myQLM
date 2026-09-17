@@ -262,6 +262,7 @@ class IsingAQPU(QPUHandler):
         seq: Sequence,
         nbshots: int = 0,
         modulation: bool = False,
+        dummy_schedule: bool = False,
     ) -> Job:
         """Converts a Pulser Sequence to a Myqlm Job.
 
@@ -278,11 +279,21 @@ class IsingAQPU(QPUHandler):
                 samples. Modulation is performed using the modulation bandwidth of the
                 channel, it is used in simulations to model more accurately the
                 behaviour of the channel.
+            dummy_schedule: Whether to replace the time-dependent Hamiltonian with a
+                small placeholder. The serialized Pulser Sequence is preserved in the
+                Schedule for execution by a FresnelQPU.
 
         Returns:
-            job: a Job with a time-dependent Ising hamiltonian in its schedule.
+            job: A Job containing the serialized Sequence and either its
+                time-dependent Ising Hamiltonian or a small placeholder schedule.
         """
         schedule = cls.convert_sequence_to_schedule(seq, modulation)
+        if dummy_schedule:
+            dummy = Schedule(
+                [(1, Observable(1, pauli_terms=[Term(1.0, "X", [0])]))], tmax=1.0
+            )
+            dummy._other = schedule._other
+            schedule = dummy
         return schedule.to_job(nbshots=nbshots)
 
     @staticmethod

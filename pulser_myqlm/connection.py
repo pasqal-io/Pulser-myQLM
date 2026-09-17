@@ -180,6 +180,7 @@ class PulserQLMConnection(pulser.backend.remote.RemoteConnection):
                         seq_to_submit,
                         nbshots=params.get("runs", 0),
                         modulation=False,
+                        dummy_schedule=True,
                     )
                 )
             )

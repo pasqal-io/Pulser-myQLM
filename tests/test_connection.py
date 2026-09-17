@@ -342,6 +342,10 @@ def test_seq_submission():
     res = mock_conn.submit(seq, job_params=[job_params])
     assert res.batch_id == f"{job_id}"
     assert res.job_ids == [f"{job_id}"]
+    submitted_job = mock_conn.qlmaas_connection.get_job(f"{job_id}").get_batch()
+    assert submitted_job.schedule.tmax == 1.0
+    assert len(submitted_job.schedule.drive) == 1
+    assert submitted_job.schedule.drive[0][1].nbqbits == 1
     assert res.get_batch_status() == pulser.backend.remote.BatchStatus.DONE
     assert len(res.get_available_results()) == 1
     assert isinstance(res.get_available_results()[f"{job_id}"], pulser.backend.Results)
