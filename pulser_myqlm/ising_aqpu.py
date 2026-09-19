@@ -279,9 +279,10 @@ class IsingAQPU(QPUHandler):
                 samples. Modulation is performed using the modulation bandwidth of the
                 channel, it is used in simulations to model more accurately the
                 behaviour of the channel.
-            dummy_schedule: Whether to replace the time-dependent Hamiltonian with a
-                small placeholder. The serialized Pulser Sequence is preserved in the
-                Schedule for execution by a FresnelQPU.
+            dummy_schedule: Defaults to False. If True, replaces the time-dependent
+                Hamiltonian with a small placeholder. The serialized Pulser Sequence
+                is preserved in the Schedule for local simulations with IsingAQPU or
+                execution by a FresnelQPU.
 
         Returns:
             job: A Job containing the serialized Sequence and either its
