@@ -8,6 +8,7 @@ from pulser.devices._device_datacls import Device
 from pulser.json.abstract_repr.deserializer import deserialize_device
 
 DEFAULT_NUMBER_OF_SHOTS = int(os.getenv("DEFAULT_NUMBER_OF_SHOTS", 2000))
+DEFAULT_SERVER_PORT = int(os.getenv("DEFAULT_SERVER_PORT", 1234))
 QPU_POLLING_INTERVAL_SECONDS = int(os.getenv("QPU_POLLING_INTERVAL_SECONDS", 5))
 JOB_POLLING_INTERVAL_SECONDS = int(os.getenv("JOB_POLLING_INTERVAL_SECONDS", 1))
 QPU_POLLING_TIMEOUT_SECONDS = int(os.getenv("QPU_POLLING_TIMEOUT_SECONDS", -1))

@@ -7,11 +7,11 @@ from pulser.devices import Device
 from qat.qpus import RemoteQPU
 
 from pulser_myqlm import IsingAQPU
+from pulser_myqlm.constants import DEFAULT_SERVER_PORT
 
 # Connect to the QPU
-PORT = 1234
 IP = "127.0.0.1"  # TODO: Modify this IP
-QPU = RemoteQPU(PORT, IP)
+QPU = RemoteQPU(DEFAULT_SERVER_PORT, IP)
 
 print("Connected")
 # Get the Device implemented by the QPU from the QPU specs

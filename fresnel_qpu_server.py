@@ -6,8 +6,7 @@ import argparse
 import logging
 
 from pulser_myqlm import FresnelQPU
-
-DEFAULT_SERVER_PORT = 1234
+from pulser_myqlm.constants import DEFAULT_SERVER_PORT
 
 
 def create_parser() -> argparse.ArgumentParser:

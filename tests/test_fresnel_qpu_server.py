@@ -1,4 +1,5 @@
-from fresnel_qpu_server import DEFAULT_SERVER_PORT, create_parser
+from fresnel_qpu_server import create_parser
+from pulser_myqlm.constants import DEFAULT_SERVER_PORT
 
 
 def test_server_port_defaults_to_1234():
