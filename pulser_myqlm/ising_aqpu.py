@@ -268,8 +268,11 @@ class IsingAQPU(QPUHandler):
 
         For a Sequence with max one declared channel, that channel being Rydberg.Global.
         Samples the Sequence, eventually modulates it using its modulation bandwidth.
-        Outputs a time-dependent Ising Hamiltonian in rad/µs in a Schedule. The time in
-        the Hamiltonian is defined in µs. The Hamiltonian is defined every 0.001µs.
+        By default, outputs a time-dependent Ising Hamiltonian in rad/µs in a
+        Schedule. Time is defined in µs, with the Hamiltonian defined every
+        0.001µs. With dummy_schedule=True, the Hamiltonian is zero (0*X on one
+        qubit) from t=0 to t=1µs. The input Sequence is stored in the
+        Schedule's _other field in its abstract representation.
 
         Args:
             seq: The Pulser Sequence to convert.
@@ -280,18 +283,19 @@ class IsingAQPU(QPUHandler):
                 channel, it is used in simulations to model more accurately the
                 behaviour of the channel.
             dummy_schedule: Defaults to False. If True, replaces the time-dependent
-                Hamiltonian with a small placeholder. The serialized Pulser Sequence
-                is preserved in the Schedule for local simulations with IsingAQPU or
-                execution by a FresnelQPU.
+                Hamiltonian with a zero dummy Hamiltonian (0*X on one qubit from
+                t=0 to t=1µs). The serialized Pulser Sequence is preserved in the
+                Schedule for local simulations with IsingAQPU or execution by a
+                FresnelQPU.
 
         Returns:
             job: A Job containing the serialized Sequence and either its
-                time-dependent Ising Hamiltonian or a small placeholder schedule.
+                time-dependent Ising Hamiltonian or the zero dummy Hamiltonian.
         """
         schedule = cls.convert_sequence_to_schedule(seq, modulation)
         if dummy_schedule:
             dummy = Schedule(
-                [(1, Observable(1, pauli_terms=[Term(1.0, "X", [0])]))], tmax=1.0
+                [(1, Observable(1, pauli_terms=[Term(0.0, "X", [0])]))], tmax=1.0
             )
             dummy._other = schedule._other
             schedule = dummy
