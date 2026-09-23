@@ -6,8 +6,11 @@ import argparse
 import logging
 
 from pulser_myqlm import FresnelQPU
+from pulser_myqlm.constants import DEFAULT_SERVER_PORT
 
-if __name__ == "__main__":
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create the command-line argument parser."""
     parser = argparse.ArgumentParser(
         prog="MyQLM server for FresnelQPU",
         description="Connects to a QPU on IP --qpu-ip and port --qpu-port using a "
@@ -22,7 +25,10 @@ if __name__ == "__main__":
         "--qpu-ip", help="IP of the target QPU.", type=str, default=None
     )
     parser.add_argument(
-        "--server-port", help="Port of the MyQLM server.", type=int, required=True
+        "--server-port",
+        help=f"Port of the MyQLM server. Defaults to {DEFAULT_SERVER_PORT}.",
+        type=int,
+        default=DEFAULT_SERVER_PORT,
     )
     parser.add_argument(
         "--server-ip",
@@ -62,7 +68,11 @@ if __name__ == "__main__":
         help="Overrides the whole logging config from file",
         default=None,
     )
-    args = parser.parse_args()
+    return parser
+
+
+if __name__ == "__main__":
+    args = create_parser().parse_args()
 
     if args.log_config_file is None:
         handlers = [logging.StreamHandler()]

@@ -18,6 +18,7 @@ from qat.core.qpu import QPUHandler
 
 from pulser_myqlm.constants import (
     DEFAULT_NUMBER_OF_SHOTS,
+    DEFAULT_SERVER_PORT,
     JOB_POLLING_INTERVAL_SECONDS,
     JOB_POLLING_TIMEOUT_SECONDS,
     QPU_POLLING_INTERVAL_SECONDS,
@@ -150,7 +151,7 @@ class FresnelQPU(QPUHandler):
 
     def serve(
         self,
-        port: int,
+        port: int = DEFAULT_SERVER_PORT,
         host_ip: str = "localhost",
         server_type: str | None = None,
         **kwargs: str,
@@ -160,7 +161,8 @@ class FresnelQPU(QPUHandler):
         The QPU can only be run if it is operational.
 
         Args:
-            port: The port on which to listen
+            port: The port on which to listen. Defaults to
+                ``pulser_myqlm.constants.DEFAULT_SERVER_PORT``.
             host_ip: The url on which to publish the API. Optional. Defaults to
                 "localhost".
             server_type: Type of server. The different types of server are:

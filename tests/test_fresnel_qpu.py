@@ -19,6 +19,7 @@ from pulser.register.special_layouts import TriangularLatticeLayout
 from qat.comm.exceptions.ttypes import QPUException
 from qat.core import Job, Observable, Sample, Schedule
 
+from pulser_myqlm.constants import DEFAULT_SERVER_PORT
 from pulser_myqlm.fresnel_qpu import TEMP_DEVICE, FresnelQPU
 from pulser_myqlm.helpers.requests import JobInfo
 from pulser_myqlm.ising_aqpu import IsingAQPU
@@ -30,6 +31,13 @@ myqlm_version = tuple(map(int, version("myqlm").split(".")))
 
 
 PORT = 1190
+
+
+def test_default_server_port():
+    with mock.patch("qat.core.qpu.QPUHandler.serve") as serve:
+        FresnelQPU(None).serve()
+
+    serve.assert_called_once_with(DEFAULT_SERVER_PORT, "localhost", None)
 
 
 @pytest.mark.skipif(
