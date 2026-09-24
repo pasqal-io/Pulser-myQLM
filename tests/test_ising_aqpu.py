@@ -454,13 +454,25 @@ def test_conversion_sampling_result(meta_data, err_mess, schedule_seq, test_isin
 
 
 @pytest.mark.parametrize("modulation", [False, True])
-def test_convert_sequence_to_job(schedule_seq, modulation):
+@pytest.mark.parametrize("dummy_schedule", [False, True])
+def test_convert_sequence_to_job(schedule_seq, modulation, dummy_schedule):
     """Test conversion of a Sequence into a Job."""
     _, seq = schedule_seq
-    job_from_seq = IsingAQPU.convert_sequence_to_job(seq, modulation=modulation)
+    job_from_seq = IsingAQPU.convert_sequence_to_job(
+        seq, modulation=modulation, dummy_schedule=dummy_schedule
+    )
     schedule_from_seq = IsingAQPU.convert_sequence_to_schedule(seq, modulation)
-    # Schedules obtained from conversion to job and schedule should match
-    assert are_equivalent_schedules(schedule_from_seq, job_from_seq.schedule)
+    if dummy_schedule:
+        assert job_from_seq.schedule._other == schedule_from_seq._other
+        assert job_from_seq.schedule.tmax == 1.0
+        assert len(job_from_seq.schedule.drive) == 1
+        dummy_hamiltonian = job_from_seq.schedule.drive[0][1]
+        assert dummy_hamiltonian.nbqbits == 1
+        assert dummy_hamiltonian.constant_coeff == 0.0
+        assert not dummy_hamiltonian.terms
+    else:
+        # Schedules obtained from conversion to job and schedule should match
+        assert are_equivalent_schedules(schedule_from_seq, job_from_seq.schedule)
     assert job_from_seq.nbshots == 0
     myqlm_version = tuple(map(int, version("myqlm").split(".")))
     assert (
