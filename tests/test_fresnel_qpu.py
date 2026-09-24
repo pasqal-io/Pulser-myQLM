@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import warnings
 from contextlib import nullcontext
 from importlib.metadata import version
 from threading import Thread
@@ -31,6 +32,68 @@ myqlm_version = tuple(map(int, version("myqlm").split(".")))
 
 
 PORT = 1190
+
+
+def test_qpu_polling_logs_status_changes_once(caplog):
+    """Repeated DOWN polls stay quiet while a new status is still visible."""
+    qpu = FresnelQPU(None)
+    logger_name = "pulser_myqlm.fresnel_qpu"
+    with (
+        mock.patch.object(
+            FresnelQPU,
+            "operational_status",
+            new_callable=mock.PropertyMock,
+            side_effect=["DOWN", "DOWN", "MAINTENANCE", "UP"],
+        ),
+        mock.patch("pulser_myqlm.fresnel_qpu.time.sleep"),
+        warnings.catch_warnings(record=True) as caught,
+        caplog.at_level(logging.DEBUG, logger=logger_name),
+    ):
+        warnings.simplefilter("always", UserWarning)
+        qpu._poll_system()
+
+    records = [record for record in caplog.records if record.name == logger_name]
+    assert [record.levelno for record in records] == [
+        logging.WARNING,
+        logging.DEBUG,
+        logging.WARNING,
+        logging.INFO,
+    ]
+    assert len(caught) == 2
+    assert "status: DOWN" in str(caught[0].message)
+    assert "status: MAINTENANCE" in str(caught[1].message)
+
+
+def test_job_polling_logs_only_status_changes_at_info(caplog):
+    """A long-running job logs transitions, not every unchanged poll."""
+    qpu = FresnelQPU(None)
+    qpu._qpu_client = mock.Mock()
+
+    def job(status):
+        return JobInfo({"uid": JOB_UID, "program_id": PROGRAM_UID, "status": status})
+
+    qpu._qpu_client.get_job_info.side_effect = [
+        job("RUNNING"),
+        job("WAITING"),
+        job("WAITING"),
+        job("DONE"),
+    ]
+    logger_name = "pulser_myqlm.fresnel_qpu"
+    with (
+        mock.patch("pulser_myqlm.fresnel_qpu.time.sleep"),
+        caplog.at_level(logging.DEBUG, logger=logger_name),
+    ):
+        result = qpu._wait_job_results(job("RUNNING"))
+
+    records = [record for record in caplog.records if record.name == logger_name]
+    assert result.get_status() == "DONE"
+    assert [(record.levelno, record.message) for record in records] == [
+        (logging.INFO, f"Current Job {JOB_UID} Status: RUNNING"),
+        (logging.DEBUG, f"Current Job {JOB_UID} Status: RUNNING"),
+        (logging.INFO, f"Current Job {JOB_UID} Status: WAITING"),
+        (logging.DEBUG, f"Current Job {JOB_UID} Status: WAITING"),
+        (logging.INFO, f"Current Job {JOB_UID} Status: DONE"),
+    ]
 
 
 def test_default_server_port():
