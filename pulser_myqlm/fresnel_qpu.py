@@ -243,15 +243,15 @@ class FresnelQPU(QPUHandler):
                 )
             time.sleep(JOB_POLLING_INTERVAL_SECONDS)
 
-        logger.info(f"Current Job {job_id} Status: {job_info.get_status()}")
+        logger.info(f"Current Job {job_id} Status: {status}")
         # Check that the job submission went well
-        if job_info.get_status() == "ERROR":
+        if status == "ERROR":
             raise QPUException(
                 ErrorType.NONERESULT,
                 message="An error occured, check locally the Sequence before "
                 "submitting or contact the support.",
             )
-        elif job_info.get_status() == "CANCELED":
+        elif status == "CANCELED":
             raise QPUException(
                 ErrorType.NONERESULT,
                 message="An error occured at the QPU level. "
