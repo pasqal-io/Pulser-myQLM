@@ -127,11 +127,20 @@ class FresnelQPU(QPUHandler):
 
     def _poll_system(self) -> None:
         """Polls QPU until it is operational."""
-        msg = f"QPU not operational, will try again in {QPU_POLLING_INTERVAL_SECONDS}s"
         polling_start = datetime.now()
-        while not self.is_operational:
-            logger.warning(msg)
-            warnings.warn(msg, UserWarning)
+        previous_status: str | None = None
+        while (status := self.operational_status) != "UP":
+            msg = (
+                "QPU not operational, will try again in "
+                f"{QPU_POLLING_INTERVAL_SECONDS}s "
+                f"(status: {status})"
+            )
+            if status != previous_status:
+                logger.warning(msg)
+                warnings.warn(msg, UserWarning)
+            else:
+                logger.debug(msg)
+            previous_status = status
             time.sleep(QPU_POLLING_INTERVAL_SECONDS)
             if (
                 QPU_POLLING_TIMEOUT_SECONDS != -1
@@ -184,8 +193,13 @@ class FresnelQPU(QPUHandler):
             )
         job_id = job_info.get_id()
         polling_start = datetime.now()
+        previous_status: str | None = None
         while (status := job_info.get_status()) not in ["ERROR", "DONE", "CANCELED"]:
-            logger.info(f"Current Job {job_id} Status: {status}")
+            logger.log(
+                logging.INFO if status != previous_status else logging.DEBUG,
+                f"Current Job {job_id} Status: {status}",
+            )
+            previous_status = status
             # We poll the status of the job until termination ("ERROR" or "DONE")
             try:
                 # No Backoff to handle errors separately
@@ -229,14 +243,15 @@ class FresnelQPU(QPUHandler):
                 )
             time.sleep(JOB_POLLING_INTERVAL_SECONDS)
 
+        logger.info(f"Current Job {job_id} Status: {status}")
         # Check that the job submission went well
-        if job_info.get_status() == "ERROR":
+        if status == "ERROR":
             raise QPUException(
                 ErrorType.NONERESULT,
                 message="An error occured, check locally the Sequence before "
                 "submitting or contact the support.",
             )
-        elif job_info.get_status() == "CANCELED":
+        elif status == "CANCELED":
             raise QPUException(
                 ErrorType.NONERESULT,
                 message="An error occured at the QPU level. "
